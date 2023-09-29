@@ -30,8 +30,8 @@ add_executable(EMGLogger EMGLogger.cpp )
 pico_set_program_name(EMGLogger "EMGLogger")
 pico_set_program_version(EMGLogger "0.1")
 
-pico_enable_stdio_uart(EMGLogger 0)
-pico_enable_stdio_usb(EMGLogger 1)
+pico_enable_stdio_uart(EMGLogger 1)
+pico_enable_stdio_usb(EMGLogger 0)
 
 # Add the standard library to the build
 target_link_libraries(EMGLogger
