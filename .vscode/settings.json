@@ -13,5 +13,10 @@
     "buildTarget" : {
       "visibility": "hidden"
                },
-     },
+    },
+    "files.associations": {
+      "*.embeddedhtml": "html",
+      "*.rmd": "markdown",
+      "tusb.h": "c"
+    },
 }

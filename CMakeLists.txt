@@ -25,7 +25,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(EMGLogger EMGLogger.cpp )
+add_executable(EMGLogger EMGLogger.cpp usbInterface.c comInterface.cpp usb_descriptors.c)
 
 pico_set_program_name(EMGLogger "EMGLogger")
 pico_set_program_version(EMGLogger "0.1")
@@ -54,6 +54,12 @@ target_link_libraries(EMGLogger
         hardware_watchdog
         hardware_clocks
         hardware_adc
+        hardware_resets 
+        hardware_irq
+        tinyusb_device 
+        tinyusb_board
+        pico_unique_id
+        pico_multicore
         )
 
 pico_add_extra_outputs(EMGLogger)
