@@ -19,4 +19,5 @@
       "*.rmd": "markdown",
       "tusb.h": "c"
     },
+    "cortex-debug.variableUseNaturalFormat": false,
 }

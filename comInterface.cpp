@@ -17,7 +17,7 @@
 #define DEBUG_PIN2 3
 
 
-#define BUFFER_SIZE (32 * 1024) // size of the buffer in bytes
+#define BUFFER_SIZE (1 * 1024) // size of the buffer in bytes
 #define ELEMENT_SIZE 4 // size in bytes of one element in sampleBuffer
 #define HEADER_SIZE 4 // size of the header in bytes
 #define BUFFER_ELEMENTS ((BUFFER_SIZE - HEADER_SIZE) / ELEMENT_SIZE) // number of elements in the buffer
@@ -103,6 +103,8 @@ int core1_init(void)
 {
     board_init();
     tusb_init();
+
+    uart_init(uart0, 921600);
 
     printf("USB Interface is set up\n");
 
