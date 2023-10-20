@@ -11,7 +11,7 @@
 #include "hardware/adc.h"
 
 #include "comInterface.h"
-#include "max11254_hal.h"
+#include "max11254.h"
 
 //include memcpy
 #include <string.h>
@@ -38,13 +38,14 @@ typedef struct
 } Header;
 
 //variables
-uint16_t sampleRate = 2'000; //Hz
+uint16_t sampleRate = 16'000; //Hz
 uint16_t samplePeriod = 1'000'000/sampleRate; //us
 uint16_t gain = 1;
 Header header = {samplePeriod, gain};
 
 uint32_t nextSampleTime = 0;
 
+MAX11254 *g_adc;
 
 
 // private function prototypes
@@ -57,52 +58,21 @@ int main(){
 
     while(1)
     {
-        #if USE_ONBOARD_ADC
-        volatile uint32_t currentTime = time_us_32();
-        if(currentTime >= nextSampleTime)
-        {
-
-            gpio_put(DEBUG_PIN1, 1);
-
-            volatile uint32_t timeDiff = currentTime - nextSampleTime + samplePeriod;
-            // calculate next sample time
-            if((currentTime - nextSampleTime) > samplePeriod)
-            {
-                // we are too late, skip samples
-                while(currentTime >= nextSampleTime)
-                {
-                    nextSampleTime += samplePeriod;
-                }
-                continue;
-            }
-            else
-            {
-                // we are on time, calculate next sample time
-                nextSampleTime += samplePeriod;
-            }
-
-
-            // read ADC and store in buffer
-            uint32_t adcValue = adc_read() & 0x00FFFFFE;
-            comInterfaceAddSample(adcValue);
-
-            gpio_put(DEBUG_PIN1, 0);
-        }
-        #endif
+        //MAX11254_STAT status = g_adc->getStatus();
 
         // check if a conversion is finished
         if(gpio_get(ADC_RDYB_PIN) == 0)
         {
-            // read ADC and store in buffer
-            int32_t adcValue;
-            adcValue = (int32_t) max11254_hal_read_reg(MAX11254_DATA3_OFFSET);
-            adcValue = (adcValue & 0x00800000)? (adcValue | 0xFF000000) : adcValue;
-            //printf("ADC value: %d\n", adcValue);
-            comInterfaceAddSample(adcValue);
+            g_adc->IRQ_handler();
         }
     }
 
     return 0;
+}
+
+void handleNewSample(int32_t adcValue, uint8_t channel, bool clipped, bool rangeExceeded, bool error)
+{
+    comInterfaceAddSample(adcValue);
 }
 
 void setup()
@@ -135,25 +105,15 @@ void setup()
     gpio_set_function(ADC_CLK_PIN, GPIO_FUNC_SPI);
     gpio_set_function(ADC_MOSI_PIN, GPIO_FUNC_SPI);
     gpio_set_function(ADC_MISO_PIN, GPIO_FUNC_SPI);
-    gpio_init(ADC_CS_PIN);
-    gpio_set_dir(ADC_CS_PIN, GPIO_OUT);
-    gpio_init(ADC_RDYB_PIN);
-    gpio_set_dir(ADC_RDYB_PIN, GPIO_IN);
-    gpio_init(ADC_RESET_PIN);
-    gpio_set_dir(ADC_RESET_PIN, GPIO_OUT);
-
-    gpio_put(ADC_CS_PIN, 1);
-    gpio_put(ADC_RESET_PIN, 1);
 
     volatile uint32_t actualBaudRate = 0;
     actualBaudRate = spi_init(spiADC, 8000000);
     printf("Actual baud rate: %d\n", actualBaudRate);
 
-    // reset ADC
-    gpio_put(ADC_RESET_PIN, 0);
-    sleep_ms(1);
-    gpio_put(ADC_RESET_PIN, 1);
+    g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, handleNewSample);
+    //g_adc->setChannels(1<<3); // channel 4
+    g_adc->startConversion();
 
-    max11254_hal_init(spiADC, ADC_CS_PIN);
+    g_adc->setSampleRate(64000);
 }
     

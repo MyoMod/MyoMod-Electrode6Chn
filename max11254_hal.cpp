@@ -25,45 +25,6 @@ void max11254_hal_init(spi_inst_t *spi, uint32_t csPin)
 {
 	g_spi = spi;
 	g_csPin = csPin;
-
-#if 1
-	// Sequence from DATA sheet page 27
-	MAX11254_SEQ seq_reg;
-	seq_reg.MODE = 0;
-	seq_reg.MDREN = 0;
-	seq_reg.GPODREN = 0;
-	seq_reg.RDYBEN = 0;
-	seq_reg.MUX = 3;
-	max11254_hal_write_reg(MAX11254_SEQ_OFFSET, *(uint8_t *)&seq_reg);
-
-	// Disable sync Input
-	max11254_hal_write_reg(MAX11254_GPIO_CTRL_OFFSET, 0xC0);
-
-	// Disable all calibrations and disable sync
-	max11254_hal_write_reg(MAX11254_CTRL3_OFFSET, 0x0F);
-
-	// CTRL2 is ok for now
-	MAX11254_CTRL2 ctrl2_reg;
-	ctrl2_reg.CCSEN = 0;
-	ctrl2_reg.EXTCLK = 0;
-	ctrl2_reg.LDOEN = 1;
-	ctrl2_reg.LPMODE = 0;
-	ctrl2_reg.PGAEN = 1;
-	ctrl2_reg.PGAG = PGA_GAIN::GAIN128;
-	max11254_hal_write_reg(MAX11254_CTRL2_OFFSET, *(uint8_t *)&ctrl2_reg);
-
-	MAX11254_CTRL1 ctrl1_reg;
-	ctrl1_reg.CAL = 0;
-	ctrl1_reg.PD = 2;
-	ctrl1_reg.Unipolar = 0;
-	ctrl1_reg.FORMAT = 0;
-	ctrl1_reg.SCYCLE = 0;
-	ctrl1_reg.CONTSC = 1;
-	max11254_hal_write_reg(MAX11254_CTRL1_OFFSET, *(uint8_t *)&ctrl1_reg);
-
-	max11254_hal_send_command(MAX11254_Command_Mode::MODE_SEQUENCER, MAX11254_SampleRate::RATE_2000_SPS_CONT);
-
-#endif
 }
 
 /*
@@ -71,7 +32,7 @@ void max11254_hal_init(spi_inst_t *spi, uint32_t csPin)
 	8bit reg:	STAT1, CTRL1, CTRL2, CTRL3
 	24bit reg:	DATA, SOC, SGC, SCOC, SCGC
 */
-uint32_t max11254_hal_read_reg(uint8_t reg)
+uint32_t max11254_hal_read_reg(uint8_t reg, void *data)
 {
 
 	uint32_t read_command = 0xC1;
@@ -90,6 +51,12 @@ uint32_t max11254_hal_read_reg(uint8_t reg)
 		result = __builtin_bswap32(result);
 	}
 
+	// return data if pointer is not NULL
+	if (data != NULL)
+	{
+		memcpy(data, &result, byteLength);
+	}
+
 	return result;
 }
 
@@ -98,25 +65,25 @@ uint32_t max11254_hal_read_reg(uint8_t reg)
 	8bit reg: 	CTRL1, CTRL2, CTRL3
 	24bit reg:	SOC, SGC, SCOC, SCGC
 */
-void max11254_hal_write_reg(uint8_t reg, uint32_t value)
+void max11254_hal_write_reg(uint8_t reg, void *value)
 {
-
+	uint32_t _value = *(uint32_t *)value;
 	uint8_t write_command = 0xC0;
 	uint32_t length = getRegLength(reg);
 
 	write_command |= (reg << 1);
-	value <<= 8;
-	value |= write_command;
+	_value <<= 8;
+	_value |= write_command;
 
 	gpio_put(g_csPin, 0);
-	spi_write_blocking(g_spi, (uint8_t *)&value, length);
+	spi_write_blocking(g_spi, (uint8_t *)&_value, length);
 	gpio_put(g_csPin, 1);
 }
 
 /*
 	Send command to MAX11254.
 */
-void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_SampleRate rate)
+void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate)
 {
 	uint8_t value = 0x80;
 	assert((uint8_t)mode <= 0x03 && (uint8_t)mode >= 0x00);
