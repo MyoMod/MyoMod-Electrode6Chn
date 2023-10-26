@@ -27,7 +27,7 @@ MAX11254::MAX11254(spi_inst_t *spi, uint8_t csPin, uint8_t rdybPin, uint32_t res
     this->_pga_gain = 1;
     this->_channels = 0b001000;
     this->_singleCycle = false;
-    this->_is2sComplement = false;
+    this->_is2sComplement = true;
 
     // Initialize pins
     gpio_init(this->_csPin);
