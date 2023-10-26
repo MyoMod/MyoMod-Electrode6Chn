@@ -138,11 +138,15 @@ void MAX11254::setChannels(uint8_t channels)
     // get MUX
     uint8_t mux = firstSetBit(channels);
 
+    stopConversion(0);
+
     // Datasheet states that MUX may be changed during conversion
     MAX11254_SEQ seq_ctrl_reg;
     max11254_hal_read_reg(MAX11254_SEQ_OFFSET, &seq_ctrl_reg);
     seq_ctrl_reg.MUX = mux;
     max11254_hal_write_reg(MAX11254_SEQ_OFFSET, &seq_ctrl_reg);
+
+    startConversion();
 }
 
 /**
