@@ -9,6 +9,7 @@
 #include "hardware/watchdog.h"
 #include "hardware/clocks.h"
 #include "hardware/adc.h"
+#include "pico/multicore.h"
 
 #include "comInterface.h"
 #include "max11254.h"
@@ -30,22 +31,15 @@
 
 #define USE_ONBOARD_ADC 0
 
-// Data types
-typedef struct
-{
-    uint16_t samplePeriod; // in us
-    uint16_t gain;
-} Header;
+
 
 //variables
-uint16_t sampleRate = 16'000; //Hz
-uint16_t samplePeriod = 1'000'000/sampleRate; //us
-uint16_t gain = 1;
-Header header = {samplePeriod, gain};
+static uint16_t sampleRate = 16'000; //Hz
+static uint16_t gain = 1;
 
-uint32_t nextSampleTime = 0;
+static uint32_t nextSampleTime = 0;
 
-MAX11254 *g_adc;
+static MAX11254 *g_adc;
 
 
 // private function prototypes
@@ -65,22 +59,21 @@ int main(){
         {
             g_adc->IRQ_handler();
         }
+
+        #if 0
+        if(multicore_fifo_rvalid())
+        {
+            comInterfaceIRQHandler();
+        }
+        #endif
     }
 
     return 0;
 }
 
-void handleNewSample(int32_t adcValue, uint8_t channel, bool clipped, bool rangeExceeded, bool error)
-{
-    comInterfaceAddSample(adcValue);
-}
-
 void setup()
 {
     stdio_init_all();
-
-    // check if sample rate is valid
-    assert(samplePeriod < 0x7FFF); // time difference is stored in 15 bits
 
     // Initialise UART 0
     uart_init(uart0, 921600);
@@ -90,10 +83,6 @@ void setup()
     gpio_init(DEBUG_PIN2);
     gpio_set_dir(DEBUG_PIN1, GPIO_OUT);
     gpio_set_dir(DEBUG_PIN2, GPIO_OUT);
-    
-    //init comInterface
-    comInterfaceInit();
-    comInterfaceSetHeader(samplePeriod, 1);
 
     // Setup up ADC 0
     adc_init();
@@ -110,10 +99,14 @@ void setup()
     actualBaudRate = spi_init(spiADC, 8000000);
     printf("Actual baud rate: %d\n", actualBaudRate);
 
-    g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, handleNewSample);
-    //g_adc->setChannels(1<<3); // channel 4
+    g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, comInterfaceAddSample);
     g_adc->startConversion();
 
-    g_adc->setSampleRate(64000);
+    g_adc->setSampleRate(sampleRate);
+    
+    //init comInterface
+    comInterfaceInit(g_adc);
+
+    g_adc->setChannels(0x01);
 }
     

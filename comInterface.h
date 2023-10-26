@@ -1,10 +1,8 @@
-#ifndef COMINTERFACE_H
-#define COMINTERFACE_H
+#pragma once
 
 #include <stdint.h>
+#include "max11254.h"
 
-int comInterfaceInit(void);
-int comInterfaceAddSample(uint32_t sample);
-int comInterfaceSetHeader(uint16_t samplePeriod, uint16_t channels);
-
-#endif // COMINTERFACE_H
+int32_t comInterfaceInit(MAX11254 *adc);
+void comInterfaceAddSample(int32_t adcValue, uint8_t channel, bool clipped, bool rangeExceeded, bool error);
+void comInterfaceIRQHandler();
