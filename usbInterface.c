@@ -26,6 +26,8 @@ static uint8_t _bulk_out_buf[BULK_BUFLEN_OUT];
 volatile static bool g_opened = 0;
 volatile static bool g_busy = 0;
 
+void (*g_usbOutCallback)(void* buffer, uint32_t length) = NULL;
+
 
 // private function prototypes
 static void usbinterface_init(void);
@@ -37,7 +39,14 @@ static bool usbinterface_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t 
 
 
 // public functions
-
+/**
+ * @brief Sends a buffer to the host.
+ * 
+ * @param buffer    The buffer to be sent.
+ * @param length    The length of the buffer.
+ * @return true     The buffer was sent.
+ * @return false    The buffer was not sent.
+ */
 extern bool usbInterfaceSendBuffer(void* buffer, uint32_t length)
 {
     //only send when driver is ready
@@ -52,6 +61,16 @@ extern bool usbInterfaceSendBuffer(void* buffer, uint32_t length)
     {
         return false;
     }
+}
+
+/**
+ * @brief Registers a callback function that is called when a buffer is received from the host.
+ * 
+ * @param callback  The callback function to be called.
+ */
+void usbInterfaceRegisterCallback(void (*callback)(void* buffer, uint32_t length))
+{
+    g_usbOutCallback = callback;
 }
 
 // private functions
@@ -147,7 +166,13 @@ static bool usbinterface_xfer_cb(uint8_t rhport, uint8_t ep_addr, xfer_result_t 
         USBINTERFACE_LOG2("                 ZLP\n");
 
     if (ep_addr == _bulk_out)
+    {
+        if (g_usbOutCallback != NULL)
+        {
+            g_usbOutCallback(_bulk_out_buf, xferred_bytes);
+        }
         TU_ASSERT ( usbd_edpt_xfer(rhport, _bulk_out, _bulk_out_buf, sizeof(_bulk_out_buf)) );
+    }
     else if (ep_addr == _bulk_in)
     {
         g_busy = false;

@@ -10,7 +10,9 @@ extern "C" {
 
 
 // Function prototypes
+
 bool usbInterfaceSendBuffer(void* buffer, uint32_t length);
+void usbInterfaceRegisterCallback(void (*callback)(void* buffer, uint32_t length));
 
 #ifdef __cplusplus
 }
