@@ -27,6 +27,13 @@ pico_sdk_init()
 
 add_executable(EMGLogger EMGLogger.cpp usbInterface.c comInterface.cpp usb_descriptors.c max11254.cpp max11254_hal.cpp)
 
+# Print size of executable
+add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND arm-none-eabi-size ${CMAKE_CURRENT_LIST_DIR}/build/${PROJECT_NAME}.elf
+    VERBATIM
+)
+string(APPEND CMAKE_EXE_LINKER_FLAGS "-Wl,--print-memory-usage")
+
 pico_set_program_name(EMGLogger "EMGLogger")
 pico_set_program_version(EMGLogger "0.1")
 
