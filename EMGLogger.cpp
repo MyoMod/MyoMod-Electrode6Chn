@@ -29,6 +29,8 @@
 #define ADC_RDYB_PIN 2
 #define ADC_RESET_PIN 5
 
+#define POWER_SAVING_PIN 23
+
 #define USE_ONBOARD_ADC 0
 
 
@@ -90,6 +92,10 @@ void setup()
     adc_select_input(0);
 
     // Init MAX11254
+    gpio_init(POWER_SAVING_PIN);
+    gpio_set_dir(POWER_SAVING_PIN, GPIO_OUT);
+    gpio_put(POWER_SAVING_PIN, 1); // turn off power saving
+
     spi_inst_t *spiADC = spi1;
     gpio_set_function(ADC_CLK_PIN, GPIO_FUNC_SPI);
     gpio_set_function(ADC_MOSI_PIN, GPIO_FUNC_SPI);
