@@ -50,6 +50,10 @@ uint32_t max11254_hal_read_reg(uint8_t reg, void *data)
 	{
 		result = __builtin_bswap32(result);
 	}
+	else
+	{
+		result >>= 8;
+	}
 
 	// return data if pointer is not NULL
 	if (data != NULL)
