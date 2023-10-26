@@ -114,6 +114,7 @@ uint8_t MAX11254::setGain(uint8_t gain)
         MAX11254_CTRL2 ctrl2_reg;
         max11254_hal_read_reg(MAX11254_CTRL2_OFFSET, &ctrl2_reg);
         ctrl2_reg.PGAG = pgaGain;
+        ctrl2_reg.PGAEN = _pga_gain > 1; // enable PGA if gain is > 1
         max11254_hal_write_reg(MAX11254_CTRL2_OFFSET, &ctrl2_reg);
 
         startConversion();
