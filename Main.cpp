@@ -37,9 +37,6 @@
 
 //variables
 static uint16_t sampleRate = 16'000; //Hz
-static uint16_t gain = 1;
-
-static uint32_t nextSampleTime = 0;
 
 static MAX11254 *g_adc;
 
@@ -50,24 +47,16 @@ void sendSampleBuffer(void* buffer, uint32_t length);
 
 int main(){
     setup();
-   
 
     while(1)
     {
         //MAX11254_STAT status = g_adc->getStatus();
 
         // check if a conversion is finished
-        if(gpio_get(ADC_RDYB_PIN) == 0)
+        if(g_adc->dataAvailable())
         {
             g_adc->IRQ_handler();
         }
-
-        #if 0
-        if(multicore_fifo_rvalid())
-        {
-            comInterfaceIRQHandler();
-        }
-        #endif
     }
 
     return 0;
@@ -92,9 +81,9 @@ void setup()
     adc_select_input(0);
 
     // Init MAX11254
-    gpio_init(POWER_SAVING_PIN);
-    gpio_set_dir(POWER_SAVING_PIN, GPIO_OUT);
-    gpio_put(POWER_SAVING_PIN, 1); // turn off power saving
+    // gpio_init(POWER_SAVING_PIN);
+    // gpio_set_dir(POWER_SAVING_PIN, GPIO_OUT);
+    // gpio_put(POWER_SAVING_PIN, 1); // turn off power saving
 
     spi_inst_t *spiADC = spi1;
     gpio_set_function(ADC_CLK_PIN, GPIO_FUNC_SPI);

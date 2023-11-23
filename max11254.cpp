@@ -22,11 +22,11 @@ MAX11254::MAX11254(spi_inst_t *spi, uint8_t csPin, uint8_t rdybPin, uint32_t res
     this->_callback = callback;
 
     // Initialize member variables
-    this->_rate = MAX11254_Rate::CONT_2000_SPS;
-    this->_mode = MAX11254_Seq_Mode::SEQ_MODE_1;
+    this->_rate = MAX11254_Rate::SINGLE_12800_SPS;
+    this->_mode = MAX11254_Seq_Mode::SEQ_MODE_3;
     this->_pga_gain = 1;
-    this->_channels = 0b001000;
-    this->_singleCycle = false;
+    this->_channels = 0b111111;
+    this->_singleCycle = true;
     this->_is2sComplement = true;
 
     // Initialize pins
@@ -189,6 +189,7 @@ MAX11254_STAT MAX11254::getStatus()
 {
     MAX11254_STAT stat_reg;
     max11254_hal_read_reg(MAX11254_STAT_OFFSET);
+    max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
     return stat_reg;
 }
 
@@ -203,7 +204,12 @@ void MAX11254::IRQ_handler()
     uint8_t channel = firstSetBit(this->_channels);
 
     // read measurement
-    uint32_t measurement = this->readMeasurement(channel);
+    uint32_t measurements[MAX11254_NUM_CHANNELS];
+    for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
+    {
+        measurements[i] = this->readMeasurement(i);
+    }
+
     MAX11254_STAT stat_reg;
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
     bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
@@ -215,7 +221,10 @@ void MAX11254::IRQ_handler()
     }
 
     // call callback function
-    this->_callback(measurement, channel, stat_reg.DOR, stat_reg.AOR, error);
+    for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
+    {
+        this->_callback(measurements[i], i, stat_reg.DOR, stat_reg.AOR, error);
+    }
 }
 
 /**
@@ -237,7 +246,7 @@ void MAX11254::startConversion()
     else
     {
         // ADC is not in power-down mode, stop conversion and wait until ADC is in power-down mode
-        stopConversion(0);
+        stopConversion(1000);
 
         //start with new sample rate
         max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
@@ -413,7 +422,7 @@ bool MAX11254::setupADC()
 	max11254_hal_write_reg(MAX11254_CTRL2_OFFSET, &ctrl2_reg);
 
 	MAX11254_CTRL3 ctrl3_reg;
-	ctrl3_reg.GPO_MODE = 0;
+	ctrl3_reg.GPO_MODE = 1;
 	ctrl3_reg.SYNC_MODE = 0;
 	ctrl3_reg.CALREGSEL = 1;
 	ctrl3_reg.NOSYSG = 1;
@@ -434,13 +443,41 @@ bool MAX11254::setupADC()
 
 	MAX11254_SEQ seq_reg;
 	seq_reg.MODE = _mode;
-	seq_reg.MDREN = 0;
+	seq_reg.MDREN = 1;
 	seq_reg.GPODREN = 0;
-	seq_reg.RDYBEN = 0;
-	seq_reg.MUX = firstSetBit(_channels);
+	seq_reg.RDYBEN = 1;
+	seq_reg.MUX = firstSetBit(_channels); // only used in SEQ_MODE_1
 	max11254_hal_write_reg(MAX11254_SEQ_OFFSET, &seq_reg);	
 
-	max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, MAX11254_Rate::CONT_32000_SPS);
+    MAX11254_CHMAP0 chmap0_reg;
+    chmap0_reg.CH0_EN = _channels & 0x01;
+    chmap0_reg.CH0_ORD = 1;
+    chmap0_reg.CH1_EN = (_channels >> 1) & 0x01;
+    chmap0_reg.CH1_ORD = 2;
+    chmap0_reg.CH2_EN = (_channels >> 2) & 0x01;
+    chmap0_reg.CH2_ORD = 3;
+    max11254_hal_write_reg(MAX11254_CHMAP0_OFFSET, &chmap0_reg);
+
+    MAX11254_CHMAP1 chmap1_reg;
+    chmap1_reg.CH3_EN = (_channels >> 3) & 0x01;
+    chmap1_reg.CH3_ORD = 4;
+    chmap1_reg.CH3_GPOEN = 1;
+    chmap1_reg.CH3_GPO0 = 0; // GPO0 is active when chn3 is active
+    chmap1_reg.CH4_EN = (_channels >> 4) & 0x01;
+    chmap1_reg.CH4_ORD = 5;
+    chmap1_reg.CH5_EN = (_channels >> 5) & 0x01;
+    chmap1_reg.CH5_ORD = 6;
+    max11254_hal_write_reg(MAX11254_CHMAP1_OFFSET, &chmap1_reg);
+
+    MAX11254_DELAY delay_reg;
+    delay_reg.MUX = 1;
+    delay_reg.GPO = 0;
+    max11254_hal_write_reg(MAX11254_DELAY_OFFSET, &delay_reg);
+
+    getStatus();
+
+
+	max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
 
     return true;
 }
@@ -460,6 +497,21 @@ uint32_t firstSetBit(uint32_t value)
         pos++;
     }
     return pos;
+}
+
+/**
+ * @brief Returns true if a new measurement is available.
+ * 
+ * @return true 
+ * @return false 
+ */
+bool MAX11254::dataAvailable()
+{
+    #ifdef MAX11254_SIMULATED
+        return _nextUpdate < time_us_64();
+    #else
+        return gpio_get(_rdybPin) == 0;
+    #endif
 }
 
 /**

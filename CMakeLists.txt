@@ -25,7 +25,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(EMGLogger EMGLogger.cpp usbInterface.c comInterface.cpp usb_descriptors.c max11254.cpp max11254_hal.cpp)
+add_executable(EMGLogger Main.cpp usbInterface.c comInterface.cpp usb_descriptors.c max11254.cpp max11254_hal.cpp)
 
 # Print size of executable
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD

@@ -65,6 +65,7 @@ public:
     uint8_t             getChannels(void);
 
     MAX11254_STAT       getStatus(void);
+    bool                dataAvailable(void);
 
     void                IRQ_handler(void);
     void                startConversion(void);

@@ -240,36 +240,29 @@ struct __attribute__((packed)) MAX11254_CHMAP1
 {
     uint8_t CH3_GPOEN : 1;
     uint8_t CH3_EN : 1;
-    uint8_t CH3_ORD0 : 1;
-    uint8_t CH3_ORD1 : 1;
-    uint8_t CH3_ORD2 : 1;
+    uint8_t CH3_ORD : 3;
     uint8_t CH3_GPO0 : 1;
     uint8_t CH3_GPO1 : 1;
     uint8_t reserved1 : 1;
     uint8_t CH4_GPOEN : 1;
     uint8_t CH4_EN : 1;
-    uint8_t CH4_ORD0 : 1;
-    uint8_t CH4_ORD1 : 1;
-    uint8_t CH4_ORD2 : 1;
+    uint8_t CH4_ORD : 3;
     uint8_t CH4_GPO0 : 1;
     uint8_t CH4_GPO1 : 1;
     uint8_t reserved2 : 1;
     uint8_t CH5_GPOEN : 1;
     uint8_t CH5_EN : 1;
-    uint8_t CH5_ORD0 : 1;
-    uint8_t CH5_ORD1 : 1;
-    uint8_t CH5_ORD2 : 1;
+    uint8_t CH5_ORD : 3;
     uint8_t CH5_GPO0 : 1;
     uint8_t CH5_GPO1 : 1;
     uint8_t reserved3 : 1;
 
     // default value
-    MAX11254_CHMAP1() : CH3_GPOEN(0), CH3_EN(0), CH3_ORD0(0), CH3_ORD1(0), 
-                        CH3_ORD2(0), CH3_GPO0(0), CH3_GPO1(0), reserved1(0), 
-                        CH4_GPOEN(0), CH4_EN(0), CH4_ORD0(0), CH4_ORD1(0), 
-                        CH4_ORD2(0), CH4_GPO0(0), CH4_GPO1(0), reserved2(0), 
-                        CH5_GPOEN(0), CH5_EN(0), CH5_ORD0(0), CH5_ORD1(0), 
-                        CH5_ORD2(0), CH5_GPO0(0), CH5_GPO1(0), reserved3(0) {}
+    MAX11254_CHMAP1() : CH3_GPOEN(0), CH3_EN(0), CH3_ORD(0), CH3_GPO0(0), 
+                        CH3_GPO1(0), reserved1(0), CH4_GPOEN(0), CH4_EN(0), 
+                        CH4_ORD(0), CH4_GPO0(0), CH4_GPO1(0), reserved2(0), 
+                        CH5_GPOEN(0), CH5_EN(0), CH5_ORD(0), CH5_GPO0(0), 
+                        CH5_GPO1(0), reserved3(0) {}
 };
 
 /***** CHMAP0 Register  **********************************/
@@ -278,36 +271,29 @@ struct __attribute__((packed)) MAX11254_CHMAP0
 {
     uint8_t CH0_GPOEN : 1;
     uint8_t CH0_EN : 1;
-    uint8_t CH0_ORD0 : 1;
-    uint8_t CH0_ORD1 : 1;
-    uint8_t CH0_ORD2 : 1;
+    uint8_t CH0_ORD: 3;
     uint8_t CH0_GPO0 : 1;
     uint8_t CH0_GPO1 : 1;
     uint8_t reserved1 : 1;
     uint8_t CH1_GPOEN : 1;
     uint8_t CH1_EN : 1;
-    uint8_t CH1_ORD0 : 1;
-    uint8_t CH1_ORD1 : 1;
-    uint8_t CH1_ORD2 : 1;
+    uint8_t CH1_ORD : 3;
     uint8_t CH1_GPO0 : 1;
     uint8_t CH1_GPO1 : 1;
     uint8_t reserved2 : 1;
     uint8_t CH2_GPOEN : 1;
     uint8_t CH2_EN : 1;
-    uint8_t CH2_ORD0 : 1;
-    uint8_t CH2_ORD1 : 1;
-    uint8_t CH2_ORD2 : 1;
+    uint8_t CH2_ORD : 3;
     uint8_t CH2_GPO0 : 1;
     uint8_t CH2_GPO1 : 1;
     uint8_t reserved3 : 1;
 
     // default value
-    MAX11254_CHMAP0() : CH0_GPOEN(0), CH0_EN(0), CH0_ORD0(0), CH0_ORD1(0), 
-                        CH0_ORD2(0), CH0_GPO0(0), CH0_GPO1(0), reserved1(0), 
-                        CH1_GPOEN(0), CH1_EN(0), CH1_ORD0(0), CH1_ORD1(0), 
-                        CH1_ORD2(0), CH1_GPO0(0), CH1_GPO1(0), reserved2(0), 
-                        CH2_GPOEN(0), CH2_EN(0), CH2_ORD0(0), CH2_ORD1(0), 
-                        CH2_ORD2(0), CH2_GPO0(0), CH2_GPO1(0), reserved3(0) {}
+    MAX11254_CHMAP0() : CH0_GPOEN(0), CH0_EN(0), CH0_ORD(0), CH0_GPO0(0), 
+                        CH0_GPO1(0), reserved1(0), CH1_GPOEN(0), CH1_EN(0), 
+                        CH1_ORD(0), CH1_GPO0(0), CH1_GPO1(0), reserved2(0), 
+                        CH2_GPOEN(0), CH2_EN(0), CH2_ORD(0), CH2_GPO0(0), 
+                        CH2_GPO1(0), reserved3(0) {}
 };
 
 /***** SEQ Register     *************************************/

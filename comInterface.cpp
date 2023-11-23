@@ -22,7 +22,7 @@
 #define BUFFER_SIZE (32 * 1024) // size of the buffer in bytes
 #define ELEMENT_SIZE 4 // size in bytes of one element in sampleBuffer
 #define HEADER_SIZE 12 // size of the header in bytes
-#define BUFFER_ELEMENTS_MAX ((BUFFER_SIZE - HEADER_SIZE) / ELEMENT_SIZE) // number of elements in the buffer
+#define BUFFER_ELEMENTS_MAX ((((BUFFER_SIZE - HEADER_SIZE) / ELEMENT_SIZE))) // number of elements in the buffer
 
 static const uint32_t LED_ON_IDLE = 1000;
 static const uint32_t LED_ON_ACTIVITY = 10;
@@ -82,9 +82,9 @@ static uint32_t g_lastEvent, g_ledErrorCount = 0;
 static LEDState g_ledState = LEDState::IDLE;
 static bool g_ledOn = false;
 
-static uint32_t sampleBuffer[2][BUFFER_SIZE/4]; // 2 buffers for double buffering
-static uint32_t sampleBufferIndex = 0; // index of the current buffer being filled
-static uint32_t sampleBufferOffset = 0; // offset in the current buffer being filled
+static uint32_t g_sampleBuffer[2][BUFFER_SIZE/4]; // 2 buffers for double buffering
+static uint32_t g_sampleBufferIndex = 0; // index of the current buffer being filled
+static uint32_t g_sampleBufferOffset = 0; // offset in the current buffer being filled
 
 static MAX11254 *g_adc;
 
@@ -119,7 +119,7 @@ int32_t comInterfaceInit(MAX11254 *adc)
     g_adc = adc;
 
     // initialize the buffers
-    memset(sampleBuffer, 0, BUFFER_SIZE*2);
+    memset(g_sampleBuffer, 0, BUFFER_SIZE*2);
 
     // initialize the header
     Header header = constructHeader(adc);
@@ -141,9 +141,16 @@ int32_t comInterfaceInit(MAX11254 *adc)
 void comInterfaceAddSample(int32_t adcValue, uint8_t channel, bool clipped, bool rangeExceeded, bool error)
 {
     Sample sample = {adcValue, channel, clipped, rangeExceeded, error, 0};
-    sampleBuffer[sampleBufferIndex][sampleBufferOffset + 3] = *(uint32_t*)&sample;
-    sampleBufferOffset++;
-    if (sampleBufferOffset >= g_BufferElements)
+    g_sampleBuffer[g_sampleBufferIndex][g_sampleBufferOffset + HEADER_SIZE/4] = *(uint32_t*)&sample;
+    g_sampleBufferOffset++;
+
+    gpio_put(DEBUG_PIN1, 1);
+    gpio_put(DEBUG_PIN1, 0);
+
+    // make sure that the buffer is not overrun and that 
+    // the buffer is zero padded at the end so that the elements are a mutliple of 6
+    uint32_t maxElements = ((g_BufferElements ) / 6) * 6;
+    if (g_sampleBufferOffset >= maxElements)
     {
 
         // command core1 to send the buffer
@@ -151,14 +158,14 @@ void comInterfaceAddSample(int32_t adcValue, uint8_t channel, bool clipped, bool
         {
             __breakpoint();
         }
-        multicore_fifo_push_blocking(sampleBufferIndex);
+        multicore_fifo_push_blocking(g_sampleBufferIndex);
 
         // check if there are new commands and issue them
         // now, so that there is no newstart of the buffers
         comInterfaceIRQHandler();
 
-        sampleBufferOffset = 0;
-        sampleBufferIndex = (sampleBufferIndex + 1) % 2;
+        g_sampleBufferOffset = 0;
+        g_sampleBufferIndex = (g_sampleBufferIndex + 1) % 2;
     }
 }
 void comInterfaceIRQHandler()
@@ -192,8 +199,8 @@ void comInterfaceIRQHandler()
         {
             assert(incomingHeader.payload <= BUFFER_ELEMENTS_MAX);
 
-            sampleBufferOffset = 0; // reset the offset
-            memset(sampleBuffer, 0, BUFFER_SIZE*2); // clear the buffers
+            g_sampleBufferOffset = 0; // reset the offset
+            memset(g_sampleBuffer, 0, BUFFER_SIZE*2); // clear the buffers
             g_BufferElements = incomingHeader.payload;
         }
 
@@ -213,8 +220,8 @@ void comInterfaceIRQHandler()
  */
 int32_t comInterfaceSetHeader(MAX11254* adc, Header header)
 {
-    memcpy(&sampleBuffer[0][0], &header, HEADER_SIZE);
-    memcpy(&sampleBuffer[1][0], &header, HEADER_SIZE);
+    memcpy(&g_sampleBuffer[0][0], &header, HEADER_SIZE);
+    memcpy(&g_sampleBuffer[1][0], &header, HEADER_SIZE);
     return 0;
 }
 
@@ -227,7 +234,7 @@ Header getHeader(void)
 {
     Header header;
 
-    memcpy(&header, &sampleBuffer[0][0], HEADER_SIZE);
+    memcpy(&header, &g_sampleBuffer[0][0], HEADER_SIZE);
     return header;
 }
 
@@ -269,9 +276,12 @@ void comInterfaceRun(void)
             firstRun = false;
             board_led_activity();
         }
+
+        gpio_put(DEBUG_PIN2, 1);
+        gpio_put(DEBUG_PIN2, 0);
         uint32_t bufferIndex = multicore_fifo_pop_blocking();
-        uint32_t* buffer = sampleBuffer[bufferIndex];
-        uint32_t length = BUFFER_SIZE;
+        uint32_t* buffer = g_sampleBuffer[bufferIndex];
+        uint32_t length = g_BufferElements * ELEMENT_SIZE + HEADER_SIZE;
         comInterfaceSendData(buffer, length);
     }
 }
