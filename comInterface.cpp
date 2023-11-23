@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include "pico/stdlib.h"
 #include "pico/multicore.h"
+#include "hardware/gpio.h"
 
 #include "bsp/board.h"
 #include "tusb.h"
@@ -22,6 +23,16 @@
 #define ELEMENT_SIZE 4 // size in bytes of one element in sampleBuffer
 #define HEADER_SIZE 12 // size of the header in bytes
 #define BUFFER_ELEMENTS_MAX ((BUFFER_SIZE - HEADER_SIZE) / ELEMENT_SIZE) // number of elements in the buffer
+
+static const uint32_t LED_ON_IDLE = 1000;
+static const uint32_t LED_ON_ACTIVITY = 10;
+static const uint32_t LED_ON_ERROR = 100;
+static const uint32_t LED_OFF_IDLE = 1500;
+static const uint32_t LED_OFF_ERROR1 = 100;
+static const uint32_t LED_OFF_ERROR2 = 1000;
+static const uint32_t LED_ERROR_COUNT = 3;
+static const uint32_t LED_TIMEOUT = 1000; // after this time the state is set to IDLE
+
 
 // Data types
 
@@ -57,9 +68,19 @@ struct __attribute__((packed)) Sample
     uint8_t EOF_GUARD : 1; // should always be 0 so that EOF can't be produced by a random data pattern
 };
 
+enum class LEDState
+{
+    IDLE,
+    ERROR,
+    SENDING_DATA
+};
+
 
 // Variables
-static uint32_t led_on_ms, led_off_ms;
+// Variables for State-LED mangement
+static uint32_t g_lastEvent, g_ledErrorCount = 0;
+static LEDState g_ledState = LEDState::IDLE;
+static bool g_ledOn = false;
 
 static uint32_t sampleBuffer[2][BUFFER_SIZE/4]; // 2 buffers for double buffering
 static uint32_t sampleBufferIndex = 0; // index of the current buffer being filled
@@ -73,8 +94,8 @@ static Header g_incomingHeader[2]; // the header received from the host
 static uint32_t g_activeHeader = 0; // the header that is currently being used by core 1
 
 // Private function prototypes
-static void board_led_blink_on(uint32_t off_ms);
-static void board_led_blink_off(uint32_t on_ms);
+void board_led_display_error(uint32_t timeDiff);
+void board_led_display_idle(uint32_t timeDiff);
 void board_led_activity(void);
 static void board_led_task(void);
 void core1_main(void);
@@ -231,19 +252,23 @@ int core1_init(void)
     uart_init(uart0, 921600);
 
     printf("USB Interface is set up\n");
-
-    board_led_blink_on(board_millis() + 100);
     return 0;
 }
 
 void comInterfaceRun(void)
 {
+    static bool firstRun = true;
     tud_task();
     board_led_task();
 
     // check if there is a buffer to send
     if(multicore_fifo_rvalid())
     {
+        if (firstRun)
+        {
+            firstRun = false;
+            board_led_activity();
+        }
         uint32_t bufferIndex = multicore_fifo_pop_blocking();
         uint32_t* buffer = sampleBuffer[bufferIndex];
         uint32_t length = BUFFER_SIZE;
@@ -277,33 +302,97 @@ int comInterfaceSendData(void* buffer, uint32_t length)
     return 0;
 }
 
-static void board_led_blink_on(uint32_t off_ms)
-{
-    board_led_on();
-    led_on_ms = 0;
-    led_off_ms = off_ms;
-}
-
-static void board_led_blink_off(uint32_t on_ms)
-{
-    board_led_off();
-    led_on_ms = on_ms;
-    led_off_ms = 0;
-}
-
 void board_led_activity(void)
 {
-    board_led_blink_on(board_millis() + 10); // blink on 10ms
+    g_ledState = LEDState::SENDING_DATA;
+    g_lastEvent = board_millis();
+}
+
+void board_led_display_error(uint32_t timeDiff)
+{
+    uint32_t totalTime = (LED_OFF_ERROR1 + LED_ON_ERROR) * LED_ERROR_COUNT + LED_OFF_ERROR2;
+    uint32_t cyclePos = timeDiff % totalTime;
+
+    if (cyclePos < LED_OFF_ERROR2)
+    {
+        board_led_off();
+    }
+    if (cyclePos >= LED_OFF_ERROR2)
+    {
+        bool ledOn = (cyclePos - LED_OFF_ERROR2) % (LED_OFF_ERROR1 + LED_ON_ERROR) < LED_ON_ERROR;
+        if (ledOn)
+        {
+            board_led_on();
+        }
+        else
+        {
+            board_led_off();
+        }
+    }
+}
+
+void board_led_display_idle(uint32_t timeDiff)
+{
+    uint32_t totalTime = LED_OFF_IDLE + LED_ON_IDLE;
+    uint32_t cyclePos = timeDiff % totalTime;
+
+    if (cyclePos < LED_OFF_IDLE)
+    {
+        board_led_off();
+    }
+    else
+    {
+        board_led_on();
+    }
 }
 
 static void board_led_task(void)
 {
-    uint32_t now_ms = board_millis();
+    static bool hasLeftIdle = false;
 
-    if (led_off_ms && now_ms >= led_off_ms)
-        board_led_blink_off(now_ms + 2000); // schedule new idle blink in 5 seconds
-    else if (led_on_ms && now_ms >= led_on_ms)
-        board_led_blink_on(now_ms + 1000); // idle blink on for one second
+    uint32_t now_ms = board_millis();
+    uint32_t timeDiff = now_ms - g_lastEvent;
+
+    switch (g_ledState)
+    {
+    case LEDState::IDLE:
+
+        if (timeDiff > LED_TIMEOUT && !hasLeftIdle)
+        {
+            // we never received data - go into Error state
+            g_ledState = LEDState::ERROR;
+            g_lastEvent = now_ms;
+        }
+        else
+        {
+            board_led_display_idle(timeDiff);
+        }
+        break;
+    case LEDState::SENDING_DATA:
+        if (timeDiff > LED_TIMEOUT)
+        {
+            g_ledState = LEDState::IDLE;
+            g_lastEvent = now_ms;
+            hasLeftIdle = true;
+        }
+        else
+        {
+            if (timeDiff > LED_ON_ACTIVITY)
+            {
+                board_led_off();
+            }
+            else
+            {
+                board_led_on();
+            }
+        }
+        break;
+    case LEDState::ERROR:
+        board_led_display_error(timeDiff);
+        break;
+    default:
+        break;
+    }
 }
 
 /**
