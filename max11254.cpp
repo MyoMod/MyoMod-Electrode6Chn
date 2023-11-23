@@ -29,6 +29,12 @@ MAX11254::MAX11254(spi_inst_t *spi, uint8_t csPin, uint8_t rdybPin, uint32_t res
     this->_singleCycle = true;
     this->_is2sComplement = true;
 
+    #ifdef MAX11254_SIMULATED
+        this->_lastIndex = 0;
+        this->_nextUpdate = 0;
+        return;
+    #endif
+
     // Initialize pins
     gpio_init(this->_csPin);
     gpio_set_dir(this->_csPin, GPIO_OUT);
@@ -50,12 +56,15 @@ MAX11254::MAX11254(spi_inst_t *spi, uint8_t csPin, uint8_t rdybPin, uint32_t res
 
     // setup ADC
     this->setupADC();
+
 }
 
 MAX11254::~MAX11254()
 {
+    #ifndef MAX11254_SIMULATED
     // hold the adc in reset
     gpio_put(this->_resetPin, 0);
+    #endif
 }
 
 /**
@@ -71,14 +80,18 @@ float MAX11254::setSampleRate(float sample_rate)
 
     // get current single-cycle state
     MAX11254_CTRL1 ctrl1_reg;
-    max11254_hal_read_reg(MAX11254_CTRL1_OFFSET, &ctrl1_reg);
+    #ifndef MAX11254_SIMULATED
+        max11254_hal_read_reg(MAX11254_CTRL1_OFFSET, &ctrl1_reg);
     bool singleCycle = ctrl1_reg.SCYCLE;
-
+    #else
+    bool singleCycle = _singleCycle;
+#endif
     newRate = this->sampleRate2Rate(sample_rate, singleCycle, &selectedSampleRate);
 
     bool rateChanged = _rate != newRate;
     _rate = newRate;
-
+    
+    #ifndef MAX11254_SIMULATED
     // if sample rate was changed and continuous mode is active, 
         // restart it with the new sample rate
     if(rateChanged && !_singleCycle)
@@ -88,6 +101,7 @@ float MAX11254::setSampleRate(float sample_rate)
         //start with new sample rate
         startConversion();
     }
+    #endif
     
     return selectedSampleRate;
 }
@@ -106,6 +120,7 @@ uint8_t MAX11254::setGain(uint8_t gain)
     bool gainChanged = this->_pga_gain != selectedGain;
     this->_pga_gain = selectedGain;
 
+    #ifndef MAX11254_SIMULATED
     if(gainChanged)
     {
         stopConversion(0);
@@ -119,6 +134,7 @@ uint8_t MAX11254::setGain(uint8_t gain)
 
         startConversion();
     }
+    #endif
 
     return selectedGain;
 }
@@ -135,7 +151,8 @@ void MAX11254::setChannels(uint8_t channels)
     assert((channels & (channels-1)) == 0); // check if only one bit is set
 
     _channels = channels;
-    
+
+    #ifndef MAX11254_SIMULATED    
     // get MUX
     uint8_t mux = firstSetBit(channels);
 
@@ -148,6 +165,7 @@ void MAX11254::setChannels(uint8_t channels)
     max11254_hal_write_reg(MAX11254_SEQ_OFFSET, &seq_ctrl_reg);
 
     startConversion();
+    #endif
 }
 
 /**
@@ -188,8 +206,9 @@ uint8_t MAX11254::getChannels()
 MAX11254_STAT MAX11254::getStatus()
 {
     MAX11254_STAT stat_reg;
-    max11254_hal_read_reg(MAX11254_STAT_OFFSET);
+    #ifndef MAX11254_SIMULATED
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
+    #endif
     return stat_reg;
 }
 
@@ -211,6 +230,7 @@ void MAX11254::IRQ_handler()
     }
 
     MAX11254_STAT stat_reg;
+    #ifndef MAX11254_SIMULATED
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
     bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
 
@@ -219,6 +239,9 @@ void MAX11254::IRQ_handler()
     {
         startConversion();
     }
+    #else
+    bool error = false;
+    #endif
 
     // call callback function
     for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
@@ -233,6 +256,10 @@ void MAX11254::IRQ_handler()
  */
 void MAX11254::startConversion()
 {
+    #ifdef MAX11254_SIMULATED
+        return;
+    #endif
+
     // get STAT register
     MAX11254_STAT stat_reg;
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, (MAX11254_STAT*)&stat_reg);
@@ -263,6 +290,9 @@ void MAX11254::startConversion()
  */
 bool MAX11254::stopConversion(uint32_t timeout)
 {
+    #ifdef MAX11254_SIMULATED
+        return true;
+    #endif
     max11254_hal_send_command(MAX11254_Command_Mode::POWER_DOWN, _rate);
 
     // wait until adc is in power-down mode
@@ -356,6 +386,24 @@ uint8_t MAX11254::PGA2Integer(MAX11254_Gain pga_gain)
 int32_t MAX11254::readMeasurement(uint32_t channel)
 {
     assert(channel < 6); // check if channel is valid (0-5)
+
+    #ifdef MAX11254_SIMULATED
+    // simulate measurement
+    int32_t measurement;
+    if(_nextUpdate < time_us_64())
+    {
+        // new measurement is available
+        _lastIndex += MAX11254_SIM_STEP_SIZE;
+                // calculate next update time
+        uint64_t deltaTime = (uint64_t)((1.0f / rate2SampleRate(_rate, 0)) * 1'000'000) * MAX11254_NUM_CHANNELS;
+        _nextUpdate += deltaTime;
+    }
+    measurement = MAX11254_SIM_FUNC(_lastIndex + MAX11254_SIM_CHN_OFFSET * channel);
+    measurement = (measurement << 8) >> 8; 
+
+    return measurement;
+    #else
+
     int32_t measurement = max11254_hal_read_reg(MAX11254_DATA0_OFFSET + channel, NULL);
 
     // signextend 24bit value to 32bit if 2s complement is used
@@ -365,6 +413,7 @@ int32_t MAX11254::readMeasurement(uint32_t channel)
     }
 
     return measurement;
+    #endif
 }
 
 /**
@@ -376,6 +425,10 @@ int32_t MAX11254::readMeasurement(uint32_t channel)
  */
 bool MAX11254::resetADC(uint32_t timeout)
 {
+    #ifdef MAX11254_SIMULATED
+        return true;
+    #endif
+
     // reset ADC
     gpio_put(this->_resetPin, 0);
     sleep_ms(1);

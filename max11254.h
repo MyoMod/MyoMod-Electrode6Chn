@@ -15,15 +15,29 @@
 #include "pico/stdlib.h"
 #include "hardware/spi.h"
 #include "max11254_hal.h"
+#include "math.h"
 
-
-
+/* Defines -------------------------------------------------------------------*/
+#define MAX11254_SIMULATED
+#ifdef MAX11254_SIMULATED
+  #define MAX11254_SIM_FUNC(x)    (sin(2 * 3.14 * ((float)x)) * ((float)(1<<20)))
+  //#define MAX11254_SIM_FUNC(x)    (x)
+  #define MAX11254_SIM_STEP_SIZE (10)
+  #define MAX11254_SIM_CHN_OFFSET (200)
+#endif
+#define MAX11254_NUM_CHANNELS (6)
 
 /* Exported functions ------------------------------------------------------- */
 
 class MAX11254
 {
 private:
+#ifdef MAX11254_SIMULATED
+    uint32_t    _lastIndex;
+    uint64_t     _nextUpdate;
+#endif
+
+
     MAX11254_Rate       _rate;
     MAX11254_Seq_Mode   _mode;
     uint8_t     _pga_gain;
