@@ -103,6 +103,8 @@ float MAX11254::setSampleRate(float sample_rate)
     }
     #endif
     
+    // feed the selected sample rate into the average as starting value
+    _actualSampleRate = selectedSampleRate;
     return selectedSampleRate;
 }
 
@@ -173,9 +175,16 @@ void MAX11254::setChannels(uint8_t channels)
  * 
  * @return float samplerate in Hz
  */
-float MAX11254::getSampleRate()
+float MAX11254::getSampleRate(bool getActual)
 {
-    return rate2SampleRate(_rate, _singleCycle);
+    if(getActual)
+    {
+        return _actualSampleRate;
+    }
+    else
+    {
+        return rate2SampleRate(_rate, _singleCycle);
+    }
 }
 
 /**
@@ -219,7 +228,7 @@ MAX11254_STAT MAX11254::getStatus()
  */
 void MAX11254::IRQ_handler()
 {
-    // get active channels
+    uint64_t currentTime = time_us_64();
 
     // IMPORTANT: Take care that the read of the first channel data is finished before it is overwritten by the next measurement.
     // restart conversion if in single-cycle mode
@@ -244,6 +253,14 @@ void MAX11254::IRQ_handler()
     {
         measurements[i] = this->readMeasurement(i);
     }
+
+    // update actual sample rate, but only if this is not the first measurement, as it would be wrong
+    if(_lastConversionTime != 0)
+    {
+        uint64_t deltaTime = currentTime - _lastConversionTime;
+        _actualSampleRate = _actualSampleRate * (1.0f - MAX11254_SAMPLE_RATE_ALPHA) + MAX11254_SAMPLE_RATE_ALPHA * (1'000'000.0f / (deltaTime));
+    }
+    _lastConversionTime = currentTime;
 
     // call callback function
     for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)

@@ -26,6 +26,7 @@
   #define MAX11254_SIM_CHN_OFFSET (200)
 #endif
 #define MAX11254_NUM_CHANNELS (6)
+#define MAX11254_SAMPLE_RATE_ALPHA (0.01f)
 
 /* Exported functions ------------------------------------------------------- */
 
@@ -51,6 +52,10 @@ private:
 
     spi_inst_t  *_spi;
 
+    uint64_t    _lastConversionTime;
+    float       _actualSampleRate;
+
+
     void        (*_callback)(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error);
 
     MAX11254_Rate       sampleRate2Rate(float sample_rate, bool singleCycle, float *actualSampleRate = NULL);
@@ -74,7 +79,7 @@ public:
     uint8_t             setGain(uint8_t gain);
     void                setChannels(uint8_t channel);
 
-    float               getSampleRate(void);
+    float               getSampleRate(bool getActual = true);
     uint8_t             getGain(void);
     uint8_t             getChannels(void);
 
