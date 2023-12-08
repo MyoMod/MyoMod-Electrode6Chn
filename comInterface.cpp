@@ -93,6 +93,8 @@ static Header g_incomingHeader[2]; // the header received from the host
 static uint32_t g_activeHeader = 0; // the header that is currently being used by core 1
 
 // Private function prototypes
+void board_led_error(void);
+void board_led_ack_error(void);
 void board_led_display_error(uint32_t timeDiff);
 void board_led_display_idle(uint32_t timeDiff);
 void board_led_activity(void);
@@ -143,9 +145,6 @@ void comInterfaceAddSample(int32_t adcValue, uint8_t channel, bool clipped, bool
     g_sampleBuffer[g_sampleBufferIndex][g_sampleBufferOffset + HEADER_SIZE/4] = *(uint32_t*)&sample;
     g_sampleBufferOffset++;
 
-    gpio_put(DEBUG_PIN1, 1);
-    gpio_put(DEBUG_PIN1, 0);
-
     // make sure that the buffer is not overrun and that 
     // the buffer is zero padded at the end so that the elements are a mutliple of 6
     uint32_t maxElements = ((g_BufferElements ) / 6) * 6;
@@ -165,6 +164,15 @@ void comInterfaceAddSample(int32_t adcValue, uint8_t channel, bool clipped, bool
 
         g_sampleBufferOffset = 0;
         g_sampleBufferIndex = (g_sampleBufferIndex + 1) % 2;
+    }
+
+    if (error)
+    {
+        board_led_error();
+    }
+    else
+    {
+        board_led_ack_error();
     }
 }
 void comInterfaceIRQHandler()
@@ -311,10 +319,23 @@ int comInterfaceSendData(void* buffer, uint32_t length)
     return 0;
 }
 
+void board_led_error(void)
+{
+    g_ledState = LEDState::ERROR;
+}
+
+void board_led_ack_error(void)
+{
+    g_ledState = LEDState::IDLE;
+}
+
 void board_led_activity(void)
 {
-    g_ledState = LEDState::SENDING_DATA;
-    g_lastEvent = board_millis();
+    if (g_ledState == LEDState::IDLE)
+    {
+        g_ledState = LEDState::SENDING_DATA;
+        g_lastEvent = board_millis();
+    }
 }
 
 void board_led_display_error(uint32_t timeDiff)
