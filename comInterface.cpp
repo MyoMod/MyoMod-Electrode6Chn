@@ -13,10 +13,9 @@
 
 #include "usbInterface.h"
 #include "comInterface.h"
+#include "debug_pins.h"
 
 // Defines
-#define DEBUG_PIN1 2
-#define DEBUG_PIN2 3
 
 
 #define BUFFER_SIZE (32 * 1024) // size of the buffer in bytes

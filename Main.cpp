@@ -13,14 +13,13 @@
 
 #include "comInterface.h"
 #include "max11254.h"
+#include "debug_pins.h"
 
 //include memcpy
 #include <string.h>
 #include "math.h"
 
 // Defines
-#define DEBUG_PIN1 2
-#define DEBUG_PIN2 3
 
 #define ADC_CLK_PIN 10
 #define ADC_MOSI_PIN 11
@@ -72,8 +71,10 @@ void setup()
     // Initialise DEBUG_PINs as outputs
     gpio_init(DEBUG_PIN1);
     gpio_init(DEBUG_PIN2);
+    gpio_init(DEBUG_PIN3);
     gpio_set_dir(DEBUG_PIN1, GPIO_OUT);
     gpio_set_dir(DEBUG_PIN2, GPIO_OUT);
+    gpio_set_dir(DEBUG_PIN3, GPIO_OUT);
 
     // Setup up ADC 0
     adc_init();
@@ -95,7 +96,7 @@ void setup()
     printf("Actual baud rate: %d\n", actualBaudRate);
 
     g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, comInterfaceAddSample);
-    g_adc->startConversion();
+    g_adc->startConversion(true);
 
     g_adc->setSampleRate(sampleRate);
     
