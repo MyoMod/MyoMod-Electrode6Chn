@@ -82,7 +82,7 @@ public:
     bool                dataAvailable(void);
 
     void                IRQ_handler(void);
-    void                startConversion(void);
+    void                startConversion(bool checkIfRunning);
     bool                stopConversion(uint32_t timeout);
 };
 

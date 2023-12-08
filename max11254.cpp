@@ -99,7 +99,7 @@ float MAX11254::setSampleRate(float sample_rate)
         stopConversion(0);
 
         //start with new sample rate
-        startConversion();
+        startConversion(true);
     }
     #endif
     
@@ -132,7 +132,7 @@ uint8_t MAX11254::setGain(uint8_t gain)
         ctrl2_reg.PGAEN = _pga_gain > 1; // enable PGA if gain is > 1
         max11254_hal_write_reg(MAX11254_CTRL2_OFFSET, &ctrl2_reg);
 
-        startConversion();
+        startConversion(true);
     }
     #endif
 
@@ -164,7 +164,7 @@ void MAX11254::setChannels(uint8_t channels)
     seq_ctrl_reg.MUX = mux;
     max11254_hal_write_reg(MAX11254_SEQ_OFFSET, &seq_ctrl_reg);
 
-    startConversion();
+    startConversion(true);
     #endif
 }
 
@@ -220,7 +220,23 @@ MAX11254_STAT MAX11254::getStatus()
 void MAX11254::IRQ_handler()
 {
     // get active channels
-    uint8_t channel = firstSetBit(this->_channels);
+
+    // IMPORTANT: Take care that the read of the first channel data is finished before it is overwritten by the next measurement.
+    // restart conversion if in single-cycle mode
+    if(_singleCycle)
+    {
+        startConversion(false);
+    }
+
+    // Read Status register and check if there was an error
+    MAX11254_STAT stat_reg;
+    #ifndef MAX11254_SIMULATED
+    max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
+    bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
+
+    #else
+    bool error = false;
+    #endif
 
     // read measurement
     uint32_t measurements[MAX11254_NUM_CHANNELS];
@@ -228,20 +244,6 @@ void MAX11254::IRQ_handler()
     {
         measurements[i] = this->readMeasurement(i);
     }
-
-    MAX11254_STAT stat_reg;
-    #ifndef MAX11254_SIMULATED
-    max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
-    bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
-
-    // restart conversion if in single-cycle mode
-    if(_singleCycle)
-    {
-        startConversion();
-    }
-    #else
-    bool error = false;
-    #endif
 
     // call callback function
     for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
@@ -254,28 +256,36 @@ void MAX11254::IRQ_handler()
  * @brief Starts a conversion with the current settings.
  * 
  */
-void MAX11254::startConversion()
+void MAX11254::startConversion(bool checkIfRunning)
 {
     #ifdef MAX11254_SIMULATED
         return;
     #endif
 
-    // get STAT register
-    MAX11254_STAT stat_reg;
-    max11254_hal_read_reg(MAX11254_STAT_OFFSET, (MAX11254_STAT*)&stat_reg);
-
-    // check if ADC is in power-down mode
-    if(stat_reg.PDSTAT != MAX11254_PowerDown::CONVERSION)
+    if (checkIfRunning)
     {
-        // ADC is in power-down mode, start conversion
-        max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+        // get STAT register
+        MAX11254_STAT stat_reg;
+        max11254_hal_read_reg(MAX11254_STAT_OFFSET, (MAX11254_STAT*)&stat_reg);
+
+        // check if ADC is in power-down mode
+        if(stat_reg.PDSTAT != MAX11254_PowerDown::CONVERSION)
+        {
+            // ADC is in power-down mode, start conversion
+            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+        }
+        else
+        {
+            // ADC is not in power-down mode, stop conversion and wait until ADC is in power-down mode
+            stopConversion(1000);
+
+            //start with new sample rate
+            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+        }
+
     }
     else
     {
-        // ADC is not in power-down mode, stop conversion and wait until ADC is in power-down mode
-        stopConversion(1000);
-
-        //start with new sample rate
         max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
     }
 
