@@ -14,6 +14,7 @@
 #include "comInterface.h"
 #include "max11254.h"
 #include "debug_pins.h"
+#include "timerSync.h"
 
 //include memcpy
 #include <string.h>
@@ -27,6 +28,8 @@
 #define ADC_CS_PIN 13
 #define ADC_RDYB_PIN 2
 #define ADC_RESET_PIN 5
+
+#define SYNC_IN_PIN 18
 
 #define POWER_SAVING_PIN 23
 
@@ -59,6 +62,12 @@ int main(){
     }
 
     return 0;
+}
+
+inline void syncCallback(bool isSync)
+{
+    gpio_set_mask(1 << DEBUG_PIN1 | isSync << DEBUG_PIN2);
+    gpio_clr_mask(1 << DEBUG_PIN1 | isSync << DEBUG_PIN2);
 }
 
 void setup()
@@ -104,5 +113,7 @@ void setup()
     comInterfaceInit(g_adc);
 
     g_adc->setChannels(0x01);
+
+    // Start the sync
+    initSync(100, 20, SYNC_IN_PIN, 0, syncCallback);
 }
-    
