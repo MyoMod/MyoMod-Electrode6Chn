@@ -51,9 +51,11 @@ private:
     uint32_t    _resetPin;
 
     spi_inst_t  *_spi;
+    bool        _rxFifoMustBeFlushed;
 
     uint64_t    _lastConversionTime;
     float       _actualSampleRate;
+    volatile bool _irqCalled = false;
 
 
     void        (*_callback)(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error);
@@ -87,6 +89,7 @@ public:
     bool                dataAvailable(void);
 
     void                IRQ_handler(void);
+    void                async_handler(void);
     void                startConversion(bool checkIfRunning);
     bool                stopConversion(uint32_t timeout);
 };

@@ -87,7 +87,7 @@ void max11254_hal_write_reg(uint8_t reg, void *value)
 /*
 	Send command to MAX11254.
 */
-void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate)
+void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate, bool blocking)
 {
 	uint8_t value = 0x80;
 	assert((uint8_t)mode <= 0x03 && (uint8_t)mode >= 0x00);
@@ -96,7 +96,17 @@ void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate)
 	value |= (uint8_t)rate;
 
 	gpio_put(g_csPin, 0);
-	spi_write_blocking(g_spi, &value, 1);
+	if(blocking)
+	{
+		spi_write_blocking(g_spi, &value, 1);
+	}
+	else
+	{
+		// the normal spi_write_blocking() will block until byte is read back
+		while (!spi_is_writable(g_spi))
+            tight_loop_contents();
+        spi_get_hw(g_spi)->dr = (uint32_t)value;
+	}
 	gpio_put(g_csPin, 1);
 }
 

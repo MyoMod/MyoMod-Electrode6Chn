@@ -1,6 +1,8 @@
 
 #include "max11254.h"
 #include "math.h"
+#include "hardware/gpio.h"
+#include "debug_pins.h"
 
 // const variables
 const float sampleRatesCont[] = {1.9, 3.9, 7.8, 15.6, 31.2, 62.5, 125, 250, 500, 1000, 2000, 4000, 8000, 16000, 32000, 64000};
@@ -99,7 +101,7 @@ float MAX11254::setSampleRate(float sample_rate)
         stopConversion(0);
 
         //start with new sample rate
-        startConversion(true);
+        startConversion(false);
     }
     #endif
     
@@ -134,7 +136,7 @@ uint8_t MAX11254::setGain(uint8_t gain)
         ctrl2_reg.PGAEN = _pga_gain > 1; // enable PGA if gain is > 1
         max11254_hal_write_reg(MAX11254_CTRL2_OFFSET, &ctrl2_reg);
 
-        startConversion(true);
+        startConversion(false);
     }
     #endif
 
@@ -166,7 +168,7 @@ void MAX11254::setChannels(uint8_t channels)
     seq_ctrl_reg.MUX = mux;
     max11254_hal_write_reg(MAX11254_SEQ_OFFSET, &seq_ctrl_reg);
 
-    startConversion(true);
+    startConversion(false);
     #endif
 }
 
@@ -223,23 +225,48 @@ MAX11254_STAT MAX11254::getStatus()
 
 /**
  * @brief Function that is called when the RDYB pin is pulled low.
- *          It reads the measurement and calls the callback function.
+ *          It starts the conversion if it is not already running 
+ *          Terminates as fast as possible. Call the async_handler() 
+ *          function to do the more time-consuming readout and 
+ *          callbackhandling.
  * 
  */
 void MAX11254::IRQ_handler()
 {
-    uint64_t currentTime = time_us_64();
-
     // IMPORTANT: Take care that the read of the first channel data is finished before it is overwritten by the next measurement.
     // restart conversion if in single-cycle mode
     if(_singleCycle)
     {
         startConversion(false);
     }
+    _irqCalled = true;
+}
+
+void MAX11254::async_handler()
+{
+    gpio_put(DEBUG_PIN1, 1);
+    uint64_t currentTime = time_us_64();
+    _irqCalled = false;
 
     // Read Status register and check if there was an error
     MAX11254_STAT stat_reg;
     #ifndef MAX11254_SIMULATED
+    // flush rx fifo if necessary
+    if(_rxFifoMustBeFlushed)
+    {
+        // Drain RX FIFO, then wait for shifting to finish (which may be *after*
+        // TX FIFO drains), then drain RX FIFO again
+        while (spi_is_readable(spi))
+            (void)spi_get_hw(spi)->dr;
+        while (spi_get_hw(spi)->sr & SPI_SSPSR_BSY_BITS)
+            tight_loop_contents();
+        while (spi_is_readable(spi))
+            (void)spi_get_hw(spi)->dr;
+
+        // Don't leave overrun flag set
+        spi_get_hw(spi)->icr = SPI_SSPICR_RORIC_BITS;
+    }
+
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
     bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
 
@@ -262,6 +289,9 @@ void MAX11254::IRQ_handler()
     }
     _lastConversionTime = currentTime;
 
+
+    gpio_put(DEBUG_PIN1, 0);
+
     // call callback function
     for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
     {
@@ -270,16 +300,20 @@ void MAX11254::IRQ_handler()
 }
 
 /**
- * @brief Starts a conversion with the current settings.
+ * @brief Starts a conversion with the current settings. If fast is true, the conversion is started immediately.
+ *         If fast is false, the conversion is started after the current conversion is finished.
+ *          
+ *          If in fast mode it is necessary to clean the SPI-rx buffer before going on.
  * 
+ * @param fast  True: Start conversion immediately and don't wait for rx-byte, False: Start conversion after current conversion is finished
  */
-void MAX11254::startConversion(bool checkIfRunning)
+void MAX11254::startConversion(bool fast)
 {
     #ifdef MAX11254_SIMULATED
         return;
     #endif
 
-    if (checkIfRunning)
+    if (!fast)
     {
         // get STAT register
         MAX11254_STAT stat_reg;
@@ -289,7 +323,7 @@ void MAX11254::startConversion(bool checkIfRunning)
         if(stat_reg.PDSTAT != MAX11254_PowerDown::CONVERSION)
         {
             // ADC is in power-down mode, start conversion
-            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate, true);
         }
         else
         {
@@ -297,13 +331,14 @@ void MAX11254::startConversion(bool checkIfRunning)
             stopConversion(1000);
 
             //start with new sample rate
-            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+            max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate, true);
         }
 
     }
     else
     {
-        max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate);
+        max11254_hal_send_command(MAX11254_Command_Mode::SEQUENCER, _rate, false);
+        _rxFifoMustBeFlushed = true;
     }
 
 }
@@ -588,9 +623,9 @@ uint32_t firstSetBit(uint32_t value)
 bool MAX11254::dataAvailable()
 {
     #ifdef MAX11254_SIMULATED
-        return _nextUpdate < time_us_64();
+        return _nextUpdate < time_us_64() && _irqCalled;
     #else
-        return gpio_get(_rdybPin) == 0;
+        return gpio_get(_rdybPin) == 0 && _irqCalled;
     #endif
 }
 
