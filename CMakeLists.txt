@@ -25,7 +25,7 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(EMGLogger Main.cpp usbInterface.c comInterface.cpp usb_descriptors.c max11254.cpp max11254_hal.cpp)
+add_executable(EMGLogger Main.cpp comInterface.cpp max11254.cpp max11254_hal.cpp i2c.cpp timerSync.cpp stateDisplay.cpp processingUnit.cpp) 
 
 # Print size of executable
 add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
@@ -63,10 +63,10 @@ target_link_libraries(EMGLogger
         hardware_adc
         hardware_resets 
         hardware_irq
-        tinyusb_device 
-        tinyusb_board
+        hardware_pwm
         pico_unique_id
         pico_multicore
+        pico_sync
         )
 
 pico_add_extra_outputs(EMGLogger)

@@ -55,6 +55,7 @@ void initSync(uint32_t inputFreq, uint32_t timesPerSync, uint32_t pin, uint32_t 
     g_pwm_ctr = &pwm_hw->slice[g_timer_slice].ctr;
     g_cyclesPerSync = timesPerSync;
     g_syncCallback = syncCallback;
+    g_isSync = false;
 
     // configure the  timer to generate a sync interupt 
     // roughly at inputFreq * timesPerSync Hz. The more precise synchornisation
@@ -103,7 +104,6 @@ void syncIRQ(uint pin, uint32_t eventMask)
 
     // adjust the phase of the timer
     *g_pwm_ctr = cyclesSinceSync < g_cyclesPerSync? g_timerPeriod-1 : 0;
-
 
 
     // add interrupt latency ~2µs

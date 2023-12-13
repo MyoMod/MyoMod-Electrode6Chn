@@ -52,12 +52,10 @@ int main(){
 
     while(1)
     {
-        //MAX11254_STAT status = g_adc->getStatus();
-
         // check if a conversion is finished
         if(g_adc->dataAvailable())
         {
-            g_adc->IRQ_handler();
+            g_adc->async_handler();
         }
     }
 
@@ -66,8 +64,12 @@ int main(){
 
 inline void syncCallback(bool isSync)
 {
-    gpio_set_mask(1 << DEBUG_PIN1 | isSync << DEBUG_PIN2);
-    gpio_clr_mask(1 << DEBUG_PIN1 | isSync << DEBUG_PIN2);
+    if(1)
+    {
+        gpio_put(DEBUG_PIN2, 1);
+        g_adc->IRQ_handler();
+        gpio_put(DEBUG_PIN2, 0);
+    }
 }
 
 void setup()
@@ -105,7 +107,7 @@ void setup()
     printf("Actual baud rate: %d\n", actualBaudRate);
 
     g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, comInterfaceAddSample);
-    g_adc->startConversion(true);
+    g_adc->startConversion(false);
 
     g_adc->setSampleRate(sampleRate);
     
@@ -115,5 +117,5 @@ void setup()
     g_adc->setChannels(0x01);
 
     // Start the sync
-    initSync(100, 20, SYNC_IN_PIN, 0, syncCallback);
+    initSync(100, 15, SYNC_IN_PIN, 0, syncCallback);
 }
