@@ -290,13 +290,13 @@ void MAX11254::async_handler()
     _lastConversionTime = currentTime;
 
 
-    gpio_put(DEBUG_PIN1, 0);
 
     // call callback function
     for (size_t i = 0; i < MAX11254_NUM_CHANNELS; i++)
     {
         this->_callback(measurements[i], i, stat_reg.DOR, stat_reg.AOR, error);
     }
+    gpio_put(DEBUG_PIN1, 0);
 }
 
 /**

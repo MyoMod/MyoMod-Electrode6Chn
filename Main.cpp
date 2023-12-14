@@ -66,9 +66,7 @@ inline void syncCallback(bool isSync)
 {
     if(1)
     {
-        gpio_put(DEBUG_PIN2, 1);
         g_adc->IRQ_handler();
-        gpio_put(DEBUG_PIN2, 0);
     }
 }
 
@@ -117,5 +115,5 @@ void setup()
     g_adc->setChannels(0x01);
 
     // Start the sync
-    initSync(100, 15, SYNC_IN_PIN, 0, syncCallback);
+    initSync(100, 10, SYNC_IN_PIN, 0, syncCallback);
 }
