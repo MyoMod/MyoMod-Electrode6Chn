@@ -12,12 +12,19 @@
 #include "debug_pins.h"
 #include "stateDisplay.h"
 #include "processingUnit.h"
+#include "i2c.h"
 
 // Defines
 #define NUMBER_OF_CHANNELS 6 // number of channels of the ADC
 #define ELEMENT_SIZE 4 // size in bytes of one element in sampleBuffer
 #define BUFFER_ELEMENTS_MAX 20 // max number of elements in the buffer
 #define BUFFER_SIZE (BUFFER_ELEMENTS_MAX * ELEMENT_SIZE * NUMBER_OF_CHANNELS) // size of the buffer in bytes
+
+#define I2C_PORT i2c0 // i2c port to use
+#define I2C_ADDR 0x08 // i2c address of the device
+#define I2C_SDA_PIN 16 // sda pin of the i2c interface
+#define I2C_SCL_PIN 17 // scl pin of the i2c interface
+
 
 // Data types
 
@@ -193,13 +200,58 @@ enum class AccessRights_t
 
 // Variables
 /**** Register interface ****/
-StatusByte_t g_statusByte;
-CommonDeviceStatus_t g_commonDeviceStatus;
-CommonDeviceInfo_t g_commonDeviceInfo;
-CommonDeviceConfiguration_t g_commonDeviceConfiguration;
-DeviceSpecificStatus_t g_deviceSpecificStatus;
-DeviceSpecificInfo_t g_deviceSpecificInfo;
-DeviceSpecificConfiguration_t g_deviceSpecificConfiguration;
+StatusByte_t g_statusByte = 
+{
+    CommErrorState_t::Ok, // errorState
+    CommWarning_t::Ok,  // warningState
+    1, // H_IN_FIFO_AVAIL
+    1, // H_OUT_FIFO_NFULL
+};
+CommonDeviceStatus_t g_commonDeviceStatus =
+{
+    1, // notInitialized
+    0, // ill_HostInBurstSize
+    0, // ill_HostOutBurstSize
+    0, // ill_ConfigurationAccess
+    0, // reserved
+};
+CommonDeviceInfo_t g_commonDeviceInfo = 
+{
+    0, // H_In_PacketSize
+    0, // H_Out_PacketSize
+    "Elctr6Ch", // Identifier
+    {0, 1, 0}, // DeviceVersion
+    {0, 1, 0}, // ProtocolVersion
+    StreamDir_t::HostIn // SupportedStreamDirections
+};
+CommonDeviceConfiguration_t g_commonDeviceConfiguration =
+{
+    0, // H_In_BurstSize
+    0, // H_Out_BurstSize
+    0, // DeviceIntialized
+    0, // reserved
+};
+DeviceSpecificStatus_t g_deviceSpecificStatus = 
+{
+    0, // Synchronized
+    0, // Clipped
+    0, // RangeExceeded
+    0, // ADCError
+    0, // NoADC
+    1, // Simulated
+};
+DeviceSpecificInfo_t g_deviceSpecificInfo = 
+{
+    "MAX11254", // DeviceSpecificInfo
+};
+DeviceSpecificConfiguration_t g_deviceSpecificConfiguration = 
+{
+    15, // SamplesPerCycle
+    1, // Gain
+    0, // UsePGA
+    0, // UseFaultControl
+    0, // reserved
+};
 
 uint32_t g_regLength[] = {sizeof(g_statusByte), sizeof(g_commonDeviceStatus), 
                             sizeof(g_commonDeviceInfo), sizeof(g_commonDeviceConfiguration), 
@@ -230,14 +282,16 @@ static bool g_outputBufferReady = false; // flag indicating if the output buffer
 static MAX11254 *g_adc;
 static StateDisplay g_stateDisplay;
 
-static uint32_t g_BufferElements = 6 * 15; // the dynamic buffersize
+static uint32_t g_BufferElements = 6 * 10; // the dynamic buffersize
 
 // Private function prototypes
 void core1_main(void);
 int core1_init(void);
 void comInterfaceRun(void);
 int comInterfaceSendData(void* buffer, uint32_t length);
-void WriteToRegister(void* buffer, uint32_t length, RegisterName_t registerName);
+bool WriteToRegister(void* buffer, uint32_t length, uint32_t registerName);
+bool ReadFromRegister(void* buffer, uint32_t *length, uint32_t registerName);
+bool __always_inline ReadStatus(uint8_t* status);
 
 // Public functions
 
@@ -370,9 +424,30 @@ void core1_main(void)
 
 int core1_init(void)
 {
-    // init i2c
-
     uart_init(uart0, 921600);
+
+    // init i2c
+    uint32_t longestRegisterLength = 0;
+    for (uint32_t i = 0; i < NUM_REGISTERS; i++)
+    {
+        if (g_regLength[i] > longestRegisterLength)
+        {
+            longestRegisterLength = g_regLength[i];
+        }
+    }
+
+    i2cInitConfiguration_t i2cConfig;
+    i2cConfig.i2c = I2C_PORT;
+    i2cConfig.i2cAddr = I2C_ADDR;
+    i2cConfig.sdaPin = I2C_SDA_PIN;
+    i2cConfig.sclPin = I2C_SCL_PIN;
+    i2cConfig.longestRegisterLength = longestRegisterLength;
+    i2cConfig.pdoDataLen = g_BufferElements * ELEMENT_SIZE;
+    i2cConfig.H_Out_PDSCallback = NULL;
+    i2cConfig.H_In_RegisterCallback = ReadFromRegister;
+    i2cConfig.H_In_StatusCallback = ReadStatus;
+    i2cConfig.H_Out_RegisterCallback = WriteToRegister;
+    I2C_Init(&i2cConfig);
 
     return 0;
 }
@@ -383,12 +458,14 @@ void comInterfaceRun(void)
     // check if there is a buffer to send
     if(multicore_fifo_rvalid())
     {
+        gpio_put(DEBUG_PIN2, 1);
         uint32_t bufferIndex = multicore_fifo_pop_blocking();
         uint32_t* buffer = g_sampleBuffer[bufferIndex];
-        uint32_t length = g_BufferElements * ELEMENT_SIZE;
+        uint32_t length = g_BufferElements * ELEMENT_SIZE; // length in bytes
         g_outputBufferIndex = bufferIndex;
         processData(buffer, g_outputBuffer[bufferIndex], length);
-        g_outputBufferReady = true;
+        I2C_send_H_In_PDSData((uint8_t*) g_outputBuffer[bufferIndex], length);
+        gpio_put(DEBUG_PIN2, 0);
     }
 }
 
@@ -404,7 +481,7 @@ void comInterfaceRun(void)
  * @param registerName The name/index of the register to write to.
  * @return void
  */
-void WriteToRegister(void* buffer, uint32_t length, RegisterName_t registerName)
+bool WriteToRegister(void* buffer, uint32_t length, uint32_t registerName)
 {
     // check if the length is valid
     bool valid = true;
@@ -440,6 +517,7 @@ void WriteToRegister(void* buffer, uint32_t length, RegisterName_t registerName)
         g_statusByte.errorState = CommErrorState_t::CommonError;
         mutex_exit(&g_regMutexes[REG_StatusByte]);
     }
+    return valid;
 }
 
 
@@ -452,16 +530,23 @@ void WriteToRegister(void* buffer, uint32_t length, RegisterName_t registerName)
  * into the buffer. If the operation is invalid, error bits in the status byte are set accordingly.
  * The caller needs to read the register using mutexes to ensure that the data is not changed while it is being read.
  * 
- * @param buffer Pointer to the register.
- * @param length The length of the data to be read.
+ * @param buffer The content of the register is copied into this buffer.
+ * @param length Pointer to the length of the data to be read, if 0 the length will be written into the pointer.
  * @param registerName The name of the register to read from.
  * @return true if the operation is successful, false otherwise.
  */
-bool ReadFromRegister(void* buffer, uint32_t length, RegisterName_t registerName)
+bool ReadFromRegister(void* buffer, uint32_t *length, uint32_t registerName)
 {
     // check if the length is valid
     bool valid = true;
-    valid &= (length == g_regLength[registerName]);
+    if (*length == 0)
+    {
+        *length = g_regLength[registerName];
+    }
+    else
+    {
+        valid &= (*length == g_regLength[registerName]);
+    }
     valid &= (registerName < NUM_REGISTERS);
     valid &= (g_regAccessRights[registerName] == AccessRights_t::Read) || 
                 (g_regAccessRights[registerName] == AccessRights_t::ReadWrite);
@@ -469,7 +554,7 @@ bool ReadFromRegister(void* buffer, uint32_t length, RegisterName_t registerName
     if(valid)
     {
         // copy the data from the register
-        buffer = g_regPointers[registerName];
+        memcpy(buffer, g_regPointers[registerName], *length);
     }
     else
     {
@@ -484,14 +569,19 @@ bool ReadFromRegister(void* buffer, uint32_t length, RegisterName_t registerName
     return valid;
 }
 
+
 /**
- * @brief Test
+ * @brief Reads the status byte from the register and checks the access rights.
  * 
- * @param buffer 
- * @param length 
- * @return int 
+ * 
+ * @param status Pointer to the variable where the status byte will be stored.
+ * @return true if the access rights are valid and the status byte is successfully read,
+ *         false otherwise.
  */
-int comInterfaceSendData(void* buffer, uint32_t length)
+bool __always_inline ReadStatus(uint8_t* status)
 {
-    g_stateDisplay.displaySendingData();
+    // copy the data from the register
+    *status = *(uint8_t*)g_regPointers[REG_StatusByte];
+    
+    return true;
 }
