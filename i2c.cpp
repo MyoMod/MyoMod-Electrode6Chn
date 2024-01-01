@@ -54,6 +54,7 @@ static uint32_t g_sdaPin;
 static uint32_t g_sclPin;
 
 // buffer related variables
+static volatile uint16_t *g_HInStreamBuffer[2] = {0}; // Buffer that contains the pds data and the one byte status.
 static volatile uint16_t *g_pdsData[2] = {0};
 static volatile uint32_t g_pdsDataLen = 0;
 static volatile uint32_t g_activePdsRxChannel = 0;
@@ -106,10 +107,12 @@ void I2C_Init(i2cInitConfiguration_t *initConfiguration)
 
     // Malloc memory for the data buffers
     g_pdsDataLen = initConfiguration->pdoDataLen;
-    g_pdsData[0] = (uint16_t*)malloc(g_pdsDataLen);
-    g_pdsData[1] = (uint16_t*)malloc(g_pdsDataLen);
-    g_registerData[0] = (uint16_t*)malloc(initConfiguration->longestRegisterLength);
-    g_registerData[1] = (uint16_t*)malloc(initConfiguration->longestRegisterLength);
+    g_HInStreamBuffer[0] = (uint16_t*)malloc((g_pdsDataLen + 1) * 2);
+    g_HInStreamBuffer[1] = (uint16_t*)malloc((g_pdsDataLen + 1) * 2);
+    g_pdsData[0] = g_HInStreamBuffer[0]+1;
+    g_pdsData[1] = g_HInStreamBuffer[1]+1;
+    g_registerData[0] = (uint16_t*)malloc(initConfiguration->longestRegisterLength * 2);
+    g_registerData[1] = (uint16_t*)malloc(initConfiguration->longestRegisterLength * 2);
 
     // init dma
     // init i2c dma
@@ -158,6 +161,12 @@ void I2C_send_H_In_PDSData(uint8_t *data, uint32_t len)
     {
         buffer16[i] = data[i] & 0xFF;
     }
+
+    // Write status byte to the beginnign of the buffer.
+    uint16_t status = 0;
+    H_In_StatusCallback((uint8_t*)&status);
+    g_HInStreamBuffer[g_activePdsRxChannel][0] = status & 0xFF;
+
     g_PdsChannelFull |= 1 << g_activePdsRxChannel;
 }
 
@@ -176,8 +185,8 @@ static void __always_inline H_IN_PdsData(void) {
         // Channel not full -> underflow
         g_pdsUnderflow = true;
     }
-    dma_channel_set_trans_count(g_i2cDmaChan, g_pdsDataLen, false);
-    dma_channel_set_read_addr(g_i2cDmaChan, g_pdsData[g_activePdsTxChannel], true);
+    dma_channel_set_trans_count(g_i2cDmaChan, g_pdsDataLen + 1, false);
+    dma_channel_set_read_addr(g_i2cDmaChan, g_HInStreamBuffer[g_activePdsTxChannel], true);
 }
 
 
@@ -364,8 +373,8 @@ static void __isr __not_in_flash_func(i2c_slave_irq_handler)(void) {
         
     }
 
-    // There shouldn't be any other interrupts.
-    if (hw->intr_stat != 0) {
+    // There shouldn't be any interrupts that were there at IRQ entry we didn't handle.
+    if ((hw->intr_stat & intr_stat) != 0) {
         volatile uint32_t intr_stat_dbg = hw->intr_stat;
         volatile uint32_t tx_abrt_source = hw->tx_abrt_source;
         __breakpoint();
