@@ -22,8 +22,8 @@
 #ifdef MAX11254_SIMULATED
   #define MAX11254_SIM_FUNC(x)    (sin(2 * 3.14 * ((float)x)) * ((float)(1<<20)))
   //#define MAX11254_SIM_FUNC(x)    (x)
-  #define MAX11254_SIM_STEP_SIZE (10)
-  #define MAX11254_SIM_CHN_OFFSET (200)
+  #define MAX11254_SIM_STEP_SIZE (1)
+  #define MAX11254_SIM_CHN_OFFSET (300)
 #endif
 #define MAX11254_NUM_CHANNELS (6)
 #define MAX11254_SAMPLE_RATE_ALPHA (0.01f)

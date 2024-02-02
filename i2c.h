@@ -22,13 +22,16 @@ struct i2cInitConfiguration_t {
     uint32_t sclPin;
 
     uint32_t longestRegisterLength; // Length of the longest register in bytes.
-    uint32_t pdoDataLen; // Length of the pdo data in bytes.
+    uint32_t HIn_pdsLength; // Length of the HIn pds data in bytes.
+    void* HOut_pdsBuffer; // Pointer to the HOut pds data.
+    uint32_t HOut_pdsLength; // Length of the HOut pds data in bytes.
 
     // callbacks
-    bool (*H_Out_PDSCallback)(uint16_t *pdoData, uint32_t pdoDataLen);
-    bool (*H_In_RegisterCallback)(void* buffer, uint32_t *length, uint32_t registerAddr);
-    bool (*H_In_StatusCallback)(uint8_t *status);
+    void (*H_Out_NotifyPdsBufferFull)(uint32_t bufferIndex);
     bool (*H_Out_RegisterCallback)(void* buffer, uint32_t length, uint32_t registerAddr);
+    bool (*H_In_GetRegisterCallback)(void* buffer, uint32_t *length, uint32_t registerAddr);
+    bool (*H_In_GetStatusCallback)(uint8_t *status);
+    void (*sync_callback)(void);
 };
 
 // Functions

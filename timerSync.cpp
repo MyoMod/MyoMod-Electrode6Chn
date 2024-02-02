@@ -44,11 +44,10 @@ void syncIRQ(uint pin, uint32_t eventMask);
  * @param pin           The pin number of the gpio pin to be used as the sync pin
  * @param timer         The timer number of the timer to be used to generate the sync signal
  */
-void initSync(uint32_t inputFreq, uint32_t timesPerSync, uint32_t pin, uint32_t timer, void (*syncCallback)(bool isSync))
+void timerSync_init(uint32_t inputFreq, uint32_t timesPerSync, uint32_t timer, void (*syncCallback)(bool isSync))
 {
     assert(inputFreq > 0);
     assert(timesPerSync > 0);
-    assert(pin < 32);
     assert(timer < 8);
 
     g_timer_slice = timer;
@@ -81,12 +80,6 @@ void initSync(uint32_t inputFreq, uint32_t timesPerSync, uint32_t pin, uint32_t 
 
     // Init and start the timer
     pwm_init(g_timer_slice, &pwmConfig, true);
-
-    // Configure the gpio pin to be used as the sync pin
-    gpio_init(pin);
-    gpio_set_dir(pin, GPIO_IN);
-    gpio_pull_up(pin);
-    gpio_set_irq_enabled_with_callback(pin, GPIO_IRQ_EDGE_RISE, true, syncIRQ);
 }
 
 /**
@@ -97,7 +90,7 @@ void initSync(uint32_t inputFreq, uint32_t timesPerSync, uint32_t pin, uint32_t 
  *          period of the timer based on the new frequency.
  * 
  */
-void syncIRQ(uint pin, uint32_t eventMask)
+void timerSync_tick()
 {
     uint32_t counterVal = *g_pwm_ctr;
     uint32_t cyclesSinceSync = g_cyclesSinceSync;
@@ -106,6 +99,7 @@ void syncIRQ(uint pin, uint32_t eventMask)
     *g_pwm_ctr = cyclesSinceSync < g_cyclesPerSync? g_timerPeriod-1 : 0;
 
 
+    //TODO: update
     // add interrupt latency ~2µs
     counterVal += 150; // 128 clock cycles is roughly 2µs
     if (counterVal < 0)

@@ -29,13 +29,14 @@
 #define ADC_RDYB_PIN 2
 #define ADC_RESET_PIN 5
 
-#define SYNC_IN_PIN 18
-
 #define POWER_SAVING_PIN 23
 
 #define USE_ONBOARD_ADC 0
 
-
+#define I2C_UNIT i2c1
+#define I2C_ADDR 0x08
+#define SDA_PIN 2
+#define SCL_PIN 3
 
 //variables
 static uint16_t sampleRate = 16'000; //Hz
@@ -45,7 +46,8 @@ static MAX11254 *g_adc;
 
 // private function prototypes
 void setup();
-void sendSampleBuffer(void* buffer, uint32_t length);
+void configCallback(DeviceSpecificConfiguration_t* config, DeviceSpecificConfiguration_t* oldConfig);
+void newDataCallback(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error);
 
 int main(){
     setup();
@@ -104,16 +106,35 @@ void setup()
     actualBaudRate = spi_init(spiADC, 8000000);
     printf("Actual baud rate: %d\n", actualBaudRate);
 
-    g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, comInterfaceAddSample);
+    g_adc = new MAX11254(spiADC, ADC_CS_PIN, ADC_RDYB_PIN, ADC_RESET_PIN, newDataCallback);
     g_adc->startConversion(false);
 
     g_adc->setSampleRate(sampleRate);
     
-    //init comInterface
-    comInterfaceInit(g_adc);
-
-    g_adc->setChannels(0x01);
-
     // Start the sync
-    initSync(100, 10, SYNC_IN_PIN, 0, syncCallback);
+    timerSync_init(100, 10, 0, syncCallback);
+
+    //init comInterface
+    cominterfaceConfiguration config;
+    config.g_i2c = I2C_UNIT;
+    config.g_i2cAddr = I2C_ADDR;
+    config.g_sdaPin = SDA_PIN;
+    config.g_sclPin = SCL_PIN;
+    config.HOut_Callback = NULL;
+    config.UpdateConfig_Callback = configCallback;
+    config.sync_callback = timerSync_tick;
+    comInterfaceInit(&config);
+}
+
+void configCallback(DeviceSpecificConfiguration_t* config, DeviceSpecificConfiguration_t* oldConfig)
+{
+    (void) config;
+    (void) oldConfig;
+}
+
+void newDataCallback(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error)
+{
+    
+
+    comInterfaceAddSample(&measurement, channel);
 }

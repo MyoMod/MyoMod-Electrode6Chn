@@ -8,4 +8,5 @@
 // Declare any classes or structs
 
 // Declare any function prototypes
-void initSync(uint32_t inputFreq, uint32_t timesPerSync, uint32_t pin, uint32_t timer, void (*syncCallback)(bool isSync));
+void timerSync_init(uint32_t inputFreq, uint32_t timesPerSync, uint32_t timer, void (*syncCallback)(bool isSync));
+void timerSync_tick();
