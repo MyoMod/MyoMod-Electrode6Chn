@@ -244,7 +244,6 @@ void MAX11254::IRQ_handler()
 
 void MAX11254::async_handler()
 {
-    gpio_put(DEBUG_PIN1, 1);
     uint64_t currentTime = time_us_64();
     _irqCalled = false;
 
@@ -256,15 +255,15 @@ void MAX11254::async_handler()
     {
         // Drain RX FIFO, then wait for shifting to finish (which may be *after*
         // TX FIFO drains), then drain RX FIFO again
-        while (spi_is_readable(spi))
-            (void)spi_get_hw(spi)->dr;
-        while (spi_get_hw(spi)->sr & SPI_SSPSR_BSY_BITS)
+        while (spi_is_readable(this->_spi))
+            (void)spi_get_hw(this->_spi)->dr;
+        while (spi_get_hw(this->_spi)->sr & SPI_SSPSR_BSY_BITS)
             tight_loop_contents();
-        while (spi_is_readable(spi))
-            (void)spi_get_hw(spi)->dr;
+        while (spi_is_readable(this->_spi))
+            (void)spi_get_hw(this->_spi)->dr;
 
         // Don't leave overrun flag set
-        spi_get_hw(spi)->icr = SPI_SSPICR_RORIC_BITS;
+        spi_get_hw(this->_spi)->icr = SPI_SSPICR_RORIC_BITS;
     }
 
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
@@ -296,7 +295,6 @@ void MAX11254::async_handler()
     {
         this->_callback(measurements[i], i, stat_reg.DOR, stat_reg.AOR, error);
     }
-    gpio_put(DEBUG_PIN1, 0);
 }
 
 /**

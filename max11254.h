@@ -18,7 +18,7 @@
 #include "math.h"
 
 /* Defines -------------------------------------------------------------------*/
-#define MAX11254_SIMULATED
+//#define MAX11254_SIMULATED
 #ifdef MAX11254_SIMULATED
   #define MAX11254_SIM_FUNC(x)    (sin(2 * 3.14 * ((float)x)) * ((float)(1<<20)))
   //#define MAX11254_SIM_FUNC(x)    (x)

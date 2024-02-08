@@ -28,7 +28,7 @@
 
 #define HIN_NUMBER_OF_CHANNELS 6                                                              // number of channels for the H_IN stream
 #define HIN_ELEMENT_SIZE 4                                                                    // size in bytes of one element for the H_IN stream
-#define HIN_BUFFER_ELEMENTS_MAX 10                                                             // max number of elements in the buffer for the H_IN stream
+#define HIN_BUFFER_ELEMENTS_MAX 15                                                             // max number of elements in the buffer for the H_IN stream
 #define HIN_BUFFER_SIZE (HIN_BUFFER_ELEMENTS_MAX * HIN_ELEMENT_SIZE * HIN_NUMBER_OF_CHANNELS) // size of the buffer in bytes for the H_IN stream
 
 

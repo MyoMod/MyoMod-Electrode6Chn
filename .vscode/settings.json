@@ -17,7 +17,8 @@
     "files.associations": {
       "*.embeddedhtml": "html",
       "*.rmd": "markdown",
-      "tusb.h": "c"
+      "tusb.h": "c",
+      "cmath": "cpp"
     },
     "cortex-debug.variableUseNaturalFormat": false,
 }

@@ -14,7 +14,7 @@
       "servertype": "openocd",
       "gdbPath": "gdb-multiarch",
       "device": "RP2040",
-      "openOCDLaunchCommands": [ + 
+      "openOCDLaunchCommands": [
          "adapter speed 5000"
       ],
       "configFiles": [
@@ -27,7 +27,11 @@
       "postRestartCommands": [
           "break main",
           "continue"
-      ]
+      ],
+      "liveWatch": {
+        "enabled": true,
+        "samplesPerSecond": 4
+      }
     },
 
     {
