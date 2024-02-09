@@ -21,6 +21,8 @@ uint32_t g_syncPin = 0; // Pin number of the sync pin
 
 uint32_t g_timer_slice = 0; // Timer number of the timer used to generate the sync signal
 volatile uint32_t g_timerPeriod = 0; // Period of the timer used to generate the sync signal
+uint32_t g_timerMax = UINT16_MAX; // Maximum value of the timer period (calculated in init function)
+uint32_t g_timerMin = 0; // Minimum value of the timer period (calculated in init function)
 volatile bool g_isSync = false; // Flag that indicates if the synchronisation to the sync signal is done
 
 void (*g_syncCallback)(bool isSync) = NULL;
@@ -70,6 +72,8 @@ void timerSync_init(uint32_t inputFreq, uint32_t timesPerSync, uint32_t timer, v
 
     // Set the period of the timer to be 1/outputFreq seconds
     g_timerPeriod = ((float)clockSpeed / prescaler) / ((float)outFreq );
+    g_timerMax = MIN(g_timerPeriod * 1.5, UINT16_MAX);
+    g_timerMin = g_timerPeriod * 0.5;
     pwm_config_set_wrap(&pwmConfig, g_timerPeriod);
 
     pwm_clear_irq(g_timer_slice);
@@ -90,7 +94,7 @@ void timerSync_init(uint32_t inputFreq, uint32_t timesPerSync, uint32_t timer, v
  *          period of the timer based on the new frequency.
  * 
  */
-void timerSync_tick()
+void timerSync_externalTrigger()
 {
     uint32_t counterVal = *g_pwm_ctr;
     uint32_t cyclesSinceSync = g_cyclesSinceSync;
@@ -114,11 +118,7 @@ void timerSync_tick()
     g_isSync |= abs(clocksError) < DEVIATION_FOR_SYNC; 
 
     uint32_t newPeriod = (int32_t) g_timerPeriod + (clocksError * ALPHA);
-    g_timerPeriod = newPeriod;
-    if(g_timerPeriod > UINT16_MAX)
-    {
-        g_timerPeriod = UINT16_MAX;
-    }
+    g_timerPeriod = MIN(MAX(newPeriod, g_timerMin), g_timerMax);
     pwm_set_wrap(g_timer_slice, g_timerPeriod);
 
     // Reset the cycles since sync counter

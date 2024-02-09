@@ -81,12 +81,9 @@ int main(){
     return 0;
 }
 
-inline void syncCallback(bool isSync)
+inline void timerSyncCallback(bool isSync)
 {
-    if(1)
-    {
-        g_adc->IRQ_handler();
-    }
+    g_adc->IRQ_handler();
 }
 
 void setup()
@@ -139,7 +136,7 @@ void setup()
     g_adc->setSampleRate(sampleRate);
     
     // Start the sync
-    timerSync_init(100, 15, 0, syncCallback);
+    timerSync_init(100, 15, 0, timerSyncCallback);
 
     //init comInterface
     cominterfaceConfiguration config;
