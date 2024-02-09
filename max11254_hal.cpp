@@ -7,6 +7,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include <stdio.h>
 #include <string.h>
+#include "pico/critical_section.h"
 #include "max11254_hal.h"
 
 // Defines
@@ -15,6 +16,7 @@ static const char *deviceName = "MAX11254";
 // global variables
 static spi_inst_t *g_spi;
 static uint32_t g_csPin;
+static critical_section_t g_critical_section;
 
 /* Private function prototypes -----------------------------------------------*/
 static inline uint32_t getRegLength(uint8_t reg);
@@ -25,6 +27,9 @@ void max11254_hal_init(spi_inst_t *spi, uint32_t csPin)
 {
 	g_spi = spi;
 	g_csPin = csPin;
+
+	// Init critical section
+	critical_section_init(&g_critical_section);
 }
 
 /*
@@ -41,9 +46,13 @@ uint32_t max11254_hal_read_reg(uint8_t reg, void *data)
 
 	read_command |= (reg << 1);
 
+	critical_section_enter_blocking(&g_critical_section);
+
 	gpio_put(g_csPin, 0);
 	spi_write_read_blocking(g_spi, (uint8_t*)&read_command, (uint8_t *)&result, byteLength);
 	gpio_put(g_csPin, 1);
+
+	critical_section_exit(&g_critical_section);
 	
 	// reverse byte order if 24bit register
 	if (byteLength == 4)
@@ -79,9 +88,13 @@ void max11254_hal_write_reg(uint8_t reg, void *value)
 	_value <<= 8;
 	_value |= write_command;
 
+	critical_section_enter_blocking(&g_critical_section);
+
 	gpio_put(g_csPin, 0);
 	spi_write_blocking(g_spi, (uint8_t *)&_value, length);
 	gpio_put(g_csPin, 1);
+
+	critical_section_exit(&g_critical_section);
 }
 
 /*
@@ -94,6 +107,8 @@ void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate, b
 	assert((uint8_t)rate <= 0x0F);
 	value |= ((uint8_t)mode << 4);
 	value |= (uint8_t)rate;
+
+	critical_section_enter_blocking(&g_critical_section);
 
 	gpio_put(g_csPin, 0);
 	if(blocking)
@@ -108,6 +123,8 @@ void max11254_hal_send_command(MAX11254_Command_Mode mode, MAX11254_Rate rate, b
         spi_get_hw(g_spi)->dr = (uint32_t)value;
 	}
 	gpio_put(g_csPin, 1);
+
+	critical_section_exit(&g_critical_section);
 }
 
 #if USE_CALIBRATION
@@ -195,7 +212,6 @@ void max11254_hal_sys_gain_calib(void)
 */
 uint8_t max11254_hal_meas_status(void)
 {
-
 	return max11254_hal_read_reg(MAX11254_STAT_OFFSET) & 0x000C;
 }
 
