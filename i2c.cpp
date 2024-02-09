@@ -314,7 +314,8 @@ static void __always_inline H_Out_RegisterTransfer(uint32_t addr) {
 
 // i2c slave handler
 static void __isr __not_in_flash_func(i2c_slave_irq_handler)(void) {
-    gpio_put(DEBUG_PIN3, 1);
+    volatile static bool inGeneralCall = false;
+
     // Read the interrupt status register to see what caused this interrupt.
     auto hw = g_i2c->hw;
     volatile uint32_t intr_stat = hw->intr_stat;
@@ -326,19 +327,21 @@ static void __isr __not_in_flash_func(i2c_slave_irq_handler)(void) {
     if (intr_stat & I2C_IC_INTR_STAT_R_GEN_CALL_BITS) {
         volatile uint32_t dummy = hw->clr_gen_call;
         dummy = hw->clr_gen_call;
-        volatile uint32_t intr_stat_dbg = hw->intr_stat;
-        dummy = hw->clr_gen_call;
-        intr_stat_dbg = hw->intr_stat;
-        gpio_put(DEBUG_PIN1, 0);
-        gpio_put(DEBUG_PIN1, 1);
 
-        sync_callback();
+        // This interrupt is thrown twice for some reason, react only to the first one.
+        // Note: This should be reseted in the stop_det interrupt.
+        if(!inGeneralCall)
+        {
+            inGeneralCall = true;
+            
+            sync_callback();
 
-        // TODO: Check if this is the right place to send the status.
-        // Write status byte to the beginnign of the output buffer.
-        uint16_t status = 0;
-        H_In_GetStatusCallback((uint8_t*)&status);
-        g_HInStreamBuffer[g_activePdsRxChannel][0] = status & 0xFF;
+            // TODO: Check if this is the right place to send the status.
+            // Write status byte to the beginning of the output buffer.
+            uint16_t status = 0;
+            H_In_GetStatusCallback((uint8_t*)&status);
+            g_HInStreamBuffer[g_activePdsRxChannel][0] = status & 0xFF;
+        }
     }    
 
     // There was data left in the tx-fifo that is now cleared.
@@ -395,6 +398,9 @@ static void __isr __not_in_flash_func(i2c_slave_irq_handler)(void) {
     if (intr_stat & I2C_IC_INTR_STAT_R_STOP_DET_BITS) {
 
         hw->clr_stop_det;
+
+        // If we are in sync, we can reset the sync flag because the general call is done.
+        inGeneralCall = false;
 
                 // Read is terminated, so we can process the data.
         if (g_transactionDir == TRANSDIR_HODI)
@@ -464,14 +470,11 @@ static void __isr __not_in_flash_func(i2c_slave_irq_handler)(void) {
     }
 
     // There shouldn't be any interrupts that were there at IRQ entry we didn't handle.
-    if ((hw->intr_stat & intr_stat ) & ~0x800) {
+    if ((hw->intr_stat & intr_stat ) & ~I2C_IC_INTR_MASK_M_GEN_CALL_BITS) {
         volatile uint32_t intr_stat_dbg = hw->intr_stat;
         volatile uint32_t tx_abrt_source = hw->tx_abrt_source;
-        gpio_put(DEBUG_PIN1, 0);
-        __breakpoint();
+        //__breakpoint();
     }
-
-    gpio_put(DEBUG_PIN3, 0);
 }
 
 
