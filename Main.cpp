@@ -15,6 +15,7 @@
 #include "max11254.h"
 #include "debug_pins.h"
 #include "timerSync.h"
+#include "stateDisplay.h"
 
 //include memcpy
 #include <string.h>
@@ -55,9 +56,11 @@ static uint16_t sampleRate = 12'000; //Hz
 static const uint8_t JUMPER_PINS[] = {JUMPER1_PIN, JUMPER2_PIN, JUMPER3_PIN, JUMPER4_PIN, JUMPER5_PIN, JUMPER6_PIN, JUMPER7_PIN};
 
 static MAX11254 *g_adc;
+static StateDisplay *g_stateDisplay;
 
 
 // private function prototypes
+void syncCallback();
 void setup();
 void configCallback(DeviceSpecificConfiguration_t* config, DeviceSpecificConfiguration_t* oldConfig);
 void newDataCallback(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error);
@@ -72,6 +75,7 @@ int main(){
         {
             g_adc->async_handler();
         }
+        g_stateDisplay->update();
     }
 
     return 0;
@@ -103,38 +107,8 @@ void setup()
     gpio_init(LED_R_PIN);
     gpio_init(LED_G_PIN);
     gpio_init(LED_B_PIN);
-    gpio_set_dir(LED_R_PIN, GPIO_IN);
-    gpio_set_dir(LED_G_PIN, GPIO_OUT);
-    gpio_set_dir(LED_B_PIN, GPIO_OUT);
-    //gpio_put(LED_R_PIN, 1);
-    gpio_pull_down(LED_R_PIN);
-    gpio_put(LED_G_PIN, 1);
-    gpio_put(LED_B_PIN, 1);
-
-    // TODO: Setup pwm
-    #if 0
-    // Initialise LED pins as pwm outputs
-    gpio_set_function(LED_R_PIN, GPIO_FUNC_PWM);
-    gpio_set_function(LED_G_PIN, GPIO_FUNC_PWM);
-    gpio_set_function(LED_B_PIN, GPIO_FUNC_PWM);
-
-    
-    const uint8_t ledPins[] = {LED_R_PIN, LED_G_PIN, LED_B_PIN};
-    for (int i = 0; i < 3; i++)
-    {
-        // Find out which PWM slice is connected to GPIO 0 (it's slice 0)
-        uint slice_num = pwm_gpio_to_slice_num(0);
-    
-        // Set period of 4 cycles (0 to 3 inclusive)
-        pwm_set_wrap(slice_num, 3);
-        // Set channel A output high for one cycle before dropping
-        pwm_set_chan_level(slice_num, PWM_CHAN_A, 1);
-        // Set initial B output high for three cycles before dropping
-        pwm_set_chan_level(slice_num, PWM_CHAN_B, 3);
-        // Set the PWM running
-        pwm_set_enabled(slice_num, true);
-    }
-    #endif
+    std::array<uint32_t, 3> ledPins = {LED_R_PIN, LED_G_PIN, LED_B_PIN};
+    g_stateDisplay = new StateDisplay(ledPins, 150);
 
     // Initialise JUMPER pins as inputs
     for (int i = 0; i < 7; i++)
@@ -175,8 +149,14 @@ void setup()
     config.g_sclPin = SCL_PIN;
     config.HOut_Callback = NULL;
     config.UpdateConfig_Callback = configCallback;
-    config.sync_callback = timerSync_tick;
+    config.sync_callback = syncCallback;
     comInterfaceInit(&config);
+}
+
+void syncCallback()
+{
+    timerSync_externalTrigger();
+    g_stateDisplay->receivedSync();
 }
 
 void configCallback(DeviceSpecificConfiguration_t* config, DeviceSpecificConfiguration_t* oldConfig)
@@ -187,7 +167,14 @@ void configCallback(DeviceSpecificConfiguration_t* config, DeviceSpecificConfigu
 
 void newDataCallback(int32_t measurement, uint8_t channel, bool clipped, bool rangeExceeded, bool error)
 {
-    
-
+    if(error || clipped || rangeExceeded)
+    {
+        g_stateDisplay->adcError();
+    }
+    else
+    {
+        g_stateDisplay->clearAdcError();
+    }
+    g_stateDisplay->receivedData();
     comInterfaceAddSample(&measurement, channel);
 }

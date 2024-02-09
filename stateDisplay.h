@@ -10,10 +10,10 @@
  */
 
 #include "pico/stdlib.h"
+#include "hardware/gpio.h"
+#include <array>
 
-// Defines
-#define STATE_DISPLAY_T_IDLE 1000 // time without event until idle starts
-
+#define STATE_DISPLAY_PUSH_PULL 0
 
 enum class DisplayState
 {
@@ -22,23 +22,44 @@ enum class DisplayState
     SENDING_DATA
 };
 
+enum class LedColor
+{
+    RED     = 0b001,
+    GREEN   = 0b010,
+    BLUE    = 0b100,
+    YELLOW  = 0b011,
+    CYAN    = 0b110,
+    MAGENTA = 0b101,
+    WHITE   = 0b111,
+    OFF     = 0b000
+};
+
 class StateDisplay
 {
 private:
-    uint32_t ledPin;
-    DisplayState displayState;
-    uint64_t lastEvent;
+    std::array<uint32_t, 3> _ledPins;
+    bool _connected;
+    bool _adcOk;
+    bool _dataUpToDate;
+    volatile uint64_t _tLastEvent;
+    uint32_t _displayValue; // 0 = red; 1 = ADC error, 2 = sync timeout, 3 = data timeout
 
-    void animateIdle(uint32_t timeDiff );
-    void animateError(uint32_t timeDiff );
-    void animateSendingData(uint32_t timeDiff );
+    uint64_t _tLastSync;
+    uint64_t _tLastData;
+    uint64_t _tLastAdcError;
+
+    uint32_t _timeOut;
+
+    void setColor(LedColor color);
 public:
-    StateDisplay(uint32_t ledPin = PICO_DEFAULT_LED_PIN);
+    StateDisplay(std::array<uint32_t, 3>& ledPins, uint32_t timeOut = 150);
     ~StateDisplay();
 
-    void run();
-    void displayError();
-    void clearError();
-    void displayIdle();
-    void displaySendingData();
+    void update();
+
+    void adcError();
+    void clearAdcError();
+
+    void receivedSync();
+    void receivedData();
 };

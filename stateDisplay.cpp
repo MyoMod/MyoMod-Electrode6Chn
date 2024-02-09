@@ -5,119 +5,145 @@
 
 #include "stateDisplay.h"
 
+#define ADC_ERROR_COLOR LedColor::MAGENTA
+#define SYNC_TIMEOUT_COLOR LedColor::BLUE
+#define DATA_TIMEOUT_COLOR LedColor::CYAN
+
 // private function prototypes
 uint32_t board_millis(void);
 
-StateDisplay::StateDisplay(uint32_t ledPin)
+StateDisplay::StateDisplay(std::array<uint32_t, 3>& ledPins, uint32_t timeOut):
+    _timeOut(timeOut),
+    _connected(false),
+    _adcOk(true),
+    _dataUpToDate(false),
+    _tLastSync(0),
+    _tLastData(0)
 {
-    ledPin = ledPin;
-    displayState = DisplayState::IDLE;
-    lastEvent = board_millis();
+    _ledPins = ledPins;
+    _tLastEvent = board_millis();
 
-    gpio_init(ledPin);
-    gpio_set_dir(ledPin, GPIO_OUT);
+    for (uint32_t i = 0; i < 3; i++)
+    {
+        gpio_init(_ledPins[i]);
+        #if STATE_DISPLAY_PUSH_PULL
+        gpio_set_dir(_ledPins[i], GPIO_OUT);
+        #else
+        gpio_set_dir(_ledPins[i], GPIO_IN);
+        #endif
+    }
+
+    update();
 }
 
 StateDisplay::~StateDisplay()
 {
 }
 
-void StateDisplay::run()
+void StateDisplay::setColor(LedColor color)
+{
+    for (uint32_t i = 0; i < 3; i++)
+    {
+        bool state = (static_cast<uint8_t>(color) >> i) & 0x01;
+        #if STATE_DISPLAY_PUSH_PULL
+        gpio_put(_ledPins[i], !state);
+        #else
+        gpio_set_pulls(_ledPins[i], !state, state);
+        #endif
+    }
+}
+
+void StateDisplay::update()
 {
     uint32_t now_ms = board_millis();
-    uint32_t timeDiff = now_ms - lastEvent;
+    uint32_t timeSinceLastEvent = now_ms - _tLastEvent;
 
-    switch (displayState)
+    // Handle timeout
+    if((now_ms - _tLastSync) > _timeOut)
     {
-    case DisplayState::IDLE:
-        animateIdle(timeDiff);
-        break;
-    case DisplayState::SENDING_DATA:
-        if (timeDiff > STATE_DISPLAY_T_IDLE)
+        _connected = false;
+    }
+
+    if((now_ms - _tLastData) > _timeOut)
+    {
+        _dataUpToDate = false;
+    }
+
+    // ADC error has to be reset 
+    if(!_adcOk && (now_ms - _tLastAdcError) > _timeOut)
+    {
+        clearAdcError();
+    }
+
+    // Animate the LED
+
+    if(timeSinceLastEvent > 500)
+    {
+        _tLastEvent = now_ms;
+
+        if(_connected && _dataUpToDate && _adcOk)
         {
-            displayState = DisplayState::IDLE;
-            lastEvent = now_ms;
+            static bool flashValue = false;
+            flashValue = !(flashValue);
+            LedColor color = flashValue ? LedColor::GREEN : LedColor::OFF;
+            setColor(color);
         }
         else
         {
-            animateSendingData(timeDiff);
+            uint8_t errors =1 | (!_adcOk << 1) + (!_connected << 2) + (!_dataUpToDate << 3);
+
+            do
+            {
+                _displayValue++;
+                _displayValue = _displayValue % 4;
+            } while (((1 << _displayValue) & errors) == 0);
+
+            switch (_displayValue)
+            {
+            case 0:
+                setColor(LedColor::RED);
+                break;
+            case 1:
+                setColor(ADC_ERROR_COLOR);
+                break;
+            case 2:
+                setColor(SYNC_TIMEOUT_COLOR);
+                break;
+            case 3:
+                setColor(DATA_TIMEOUT_COLOR);
+                break;
+            
+            default:
+                break;
+            }
         }
-        break;
-    case DisplayState::ERROR:
-        animateError(timeDiff);
-        break;
-    default:
-        break;
     }
 }
 
-void StateDisplay::animateIdle(uint32_t timeDiff)
+void StateDisplay::adcError()
 {
-    const uint32_t LED_OFF_IDLE = 1000;
-    const uint32_t LED_ON_IDLE = 500;
-
-    uint32_t totalTime = LED_OFF_IDLE + LED_ON_IDLE;
-    uint32_t cyclePos = timeDiff % totalTime;
-
-    gpio_put(ledPin, cyclePos < LED_ON_IDLE);
+    _adcOk = false;
+    update();
 }
 
-void StateDisplay::animateError(uint32_t timeDiff)
+void StateDisplay::clearAdcError()
 {
-    const uint32_t LED_OFF_ERROR1 = 100;
-    const uint32_t LED_OFF_ERROR2 = 1000;
-    const uint32_t LED_ON_ERROR = 100;
-    const uint32_t LED_ERROR_COUNT = 3;
-
-    uint32_t totalTime = (LED_OFF_ERROR1 + LED_ON_ERROR) * LED_ERROR_COUNT + LED_OFF_ERROR2;
-    uint32_t cyclePos = timeDiff % totalTime;
-
-    if (cyclePos > (totalTime - LED_OFF_ERROR2))
-    {
-        gpio_put(ledPin, 0);
-    }
-    else
-    {
-        bool ledOn = (cyclePos) % (LED_OFF_ERROR1 + LED_ON_ERROR) < LED_ON_ERROR;
-        gpio_put(ledPin, ledOn);
-    }
+    _adcOk = true;
 }
 
-void StateDisplay::animateSendingData(uint32_t timeDiff)
+void StateDisplay::receivedData()
 {
-    const uint32_t LED_OFF_SENDING = 125;
-    const uint32_t LED_ON_SENDING = 125;
-
-    uint32_t totalTime = LED_OFF_SENDING + LED_ON_SENDING;
-    uint32_t cyclePos = timeDiff % totalTime;
-
-    gpio_put(ledPin, cyclePos < LED_ON_SENDING);
+    _dataUpToDate = true;
+    _tLastData = board_millis();
+    update();
 }
 
-void StateDisplay::displayError()
+void StateDisplay::receivedSync()
 {
-    displayState = DisplayState::ERROR;
-    lastEvent = board_millis();
+    _connected = true;
+    _tLastSync = board_millis();
+    update();
 }
-
-void StateDisplay::clearError()
-{
-    displayState = DisplayState::IDLE;
-    lastEvent = board_millis();
-}
-
-void StateDisplay::displayIdle()
-{
-    displayState = DisplayState::IDLE;
-    lastEvent = board_millis();
-}
-
-void StateDisplay::displaySendingData()
-{
-    displayState = DisplayState::SENDING_DATA;
-    lastEvent = board_millis();
-}
-
 
 uint32_t board_millis(void)
 {
