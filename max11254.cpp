@@ -267,7 +267,7 @@ void MAX11254::async_handler()
     }
 
     max11254_hal_read_reg(MAX11254_STAT_OFFSET, &stat_reg);
-    bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR || !stat_reg.REFDET;
+    bool error = stat_reg.ERROR || stat_reg.GPOERR || stat_reg.ORDERR || stat_reg.SCANERR;
 
     #else
     bool error = false;
